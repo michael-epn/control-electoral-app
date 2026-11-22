@@ -26,6 +26,7 @@ import type { RequestState } from '../models/request-state.model';
 import type { Usuario } from '../models/usuario.model';
 import { isVotosOrganizaciones } from '../validators/votos-organizaciones.validator';
 import { AuthStateService } from './auth-state.service';
+import { OfflineSyncService } from './offline-sync.service';
 import { SupabaseService } from './supabase.service';
 
 export interface VotosPorOrganizacion {
@@ -125,6 +126,14 @@ function parseActa(value: unknown): ActaElectoral {
     || typeof value['auditadaPorCoordinador'] !== 'boolean'
     || (value['fotoPath'] !== null && typeof value['fotoPath'] !== 'string')
     || (value['fotoUrl'] !== null && typeof value['fotoUrl'] !== 'string')
+    || (
+      value['client_timestamp'] !== undefined
+      && (
+        typeof value['client_timestamp'] !== 'number'
+        || !Number.isSafeInteger(value['client_timestamp'])
+        || value['client_timestamp'] < 0
+      )
+    )
   ) {
     throw new Error('Se encontró un acta con metadatos inválidos.');
   }
@@ -147,6 +156,9 @@ function parseActa(value: unknown): ActaElectoral {
     fotoUrl: value['fotoUrl'],
     gps: { lat, lng },
     auditadaPorCoordinador: value['auditadaPorCoordinador'],
+    ...(value['client_timestamp'] === undefined
+      ? {}
+      : { client_timestamp: value['client_timestamp'] }),
     ...(bloqueada === undefined ? {} : { bloqueada }),
   };
 }
@@ -266,6 +278,7 @@ export class EscrutinioStateService {
 
   private readonly authState = inject(AuthStateService);
   private readonly firestore = inject(Firestore);
+  private readonly offlineSync = inject(OfflineSyncService);
   private readonly supabase = inject(SupabaseService);
   private readonly destroyRef = inject(DestroyRef);
   private subscriptions = new Subscription();
@@ -349,6 +362,40 @@ export class EscrutinioStateService {
         throw new Error('Un veedor no puede marcar un acta como auditada.');
       }
 
+      if (usuario.rol === 'VEEDOR') {
+        try {
+          await this.offlineSync.preparar();
+        } catch (error) {
+          if (!this.offlineSync.isOnline()) {
+            throw error;
+          }
+        }
+        if (!this.offlineSync.isOnline()) {
+          const clientTimestamp = await this.offlineSync.encolarActa(datos, firebaseUid);
+          const actaPendiente: ActaElectoral = {
+            id: actaId,
+            recintoId: datos.recintoId,
+            jrvId: datos.jrvId,
+            dignidad: datos.dignidad,
+            votosOrganizaciones,
+            votosNulos: datos.votosNulos,
+            votosBlancos: datos.votosBlancos,
+            totalSufragantes: datos.totalSufragantes,
+            fotoPath: null,
+            fotoUrl: null,
+            gps: datos.gps,
+            auditadaPorCoordinador: false,
+            client_timestamp: clientTimestamp,
+          };
+          this.guardarActaState.set({
+            status: 'success',
+            data: actaPendiente,
+            message: 'Sin conexión: el acta quedó pendiente de envío.',
+          });
+          return actaPendiente;
+        }
+      }
+
       let fotoPath = existente?.fotoPath ?? null;
       let fotoUrl = existente?.fotoUrl ?? null;
       if (datos.foto) {
@@ -381,6 +428,7 @@ export class EscrutinioStateService {
         gps: datos.gps,
         auditadaPorCoordinador:
           usuario.rol === 'RECINTO' && datos.auditadaPorCoordinador === true,
+        client_timestamp: Date.now(),
         ...(existente?.bloqueada === undefined
           ? {}
           : { bloqueada: existente.bloqueada }),

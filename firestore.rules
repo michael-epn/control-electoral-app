@@ -124,6 +124,13 @@ service cloud.firestore {
         && data.gps.lng <= 180;
     }
 
+    function validClientTimestamp(data) {
+      return !data.keys().hasAny(['client_timestamp'])
+        || (data.client_timestamp is int
+          && data.client_timestamp >= 0
+          && data.client_timestamp <= request.time.toMillis() + 60000);
+    }
+
     function isValidActa(data, actaId) {
       return data.keys().hasAll([
           'id',
@@ -152,6 +159,7 @@ service cloud.firestore {
           'fotoUrl',
           'gps',
           'auditadaPorCoordinador',
+          'client_timestamp',
           'bloqueada'
         ])
         && data.id == actaId
@@ -166,6 +174,7 @@ service cloud.firestore {
         && data.fotoUrl is string
         && data.fotoUrl.matches('https?://.+')
         && validGps(data)
+        && validClientTimestamp(data)
         && data.auditadaPorCoordinador is bool
         && (!data.keys().hasAny(['bloqueada']) || data.bloqueada is bool)
         && (!data.keys().hasAny(['bloqueada']) || data.bloqueada == false);
@@ -184,7 +193,8 @@ service cloud.firestore {
           'gps',
           'fotoPath',
           'fotoUrl',
-          'auditadaPorCoordinador'
+          'auditadaPorCoordinador',
+          'client_timestamp'
         ])
         && (!request.resource.data.diff(data).affectedKeys()
             .hasAny(['fotoPath', 'fotoUrl'])
@@ -196,6 +206,7 @@ service cloud.firestore {
             && request.resource.data.fotoPath.split('/')[0] == request.auth.uid))
         && request.resource.data.fotoUrl is string
         && request.resource.data.fotoUrl.matches('https?://.+')
+        && validClientTimestamp(request.resource.data)
         && (!request.resource.data.diff(data).affectedKeys()
             .hasAny(['auditadaPorCoordinador'])
           || (isRecinto()

@@ -318,12 +318,16 @@ export class ActaEditorComponent {
         gps: gps.data,
         auditadaPorCoordinador: this.auditoria(),
       });
+      const state = this.escrutinio.guardarActaState();
+      const message = state.status === 'success'
+        ? state.message ?? 'El acta se guardó correctamente.'
+        : 'El acta se guardó correctamente.';
       this.estadoEnvio.set({
         status: 'success',
         data: acta,
-        message: 'El acta se guardó correctamente.',
+        message,
       });
-      this.toastMensaje.set('Acta guardada correctamente.');
+      this.toastMensaje.set(message);
       this.toastAbierto.set(true);
     } catch (error) {
       this.estadoEnvio.set({

@@ -1,5 +1,6 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import {
+  IonBadge,
   IonButton,
   IonCard,
   IonCardContent,
@@ -10,11 +11,13 @@ import {
   IonItem,
   IonLabel,
   IonTitle,
+  IonToast,
   IonToolbar,
 } from '@ionic/angular';
 import type { Dignidad } from '../../core/models/dignidad.model';
 import { AuthStateService } from '../../core/services/auth-state.service';
 import { EscrutinioStateService } from '../../core/services/escrutinio-state.service';
+import { OfflineSyncService } from '../../core/services/offline-sync.service';
 import { ActaEditorComponent } from '../../shared/components/acta-editor/acta-editor.component';
 import { UiFeedbackComponent } from '../../shared/components/ui-feedback/ui-feedback.component';
 
@@ -25,6 +28,7 @@ import { UiFeedbackComponent } from '../../shared/components/ui-feedback/ui-feed
     ActaEditorComponent,
     UiFeedbackComponent,
     IonButton,
+    IonBadge,
     IonCard,
     IonCardContent,
     IonCardHeader,
@@ -34,12 +38,21 @@ import { UiFeedbackComponent } from '../../shared/components/ui-feedback/ui-feed
     IonItem,
     IonLabel,
     IonTitle,
+    IonToast,
     IonToolbar,
   ],
   template: `
     <ion-header>
       <ion-toolbar>
         <ion-title>Panel de veeduría</ion-title>
+        <div slot="end" class="sync-badges" aria-live="polite">
+          <ion-badge color="warning">
+            Pendientes de envío: {{ offlineSync.pendientesCount() }}
+          </ion-badge>
+          <ion-badge color="success">
+            Sincronizadas: {{ sincronizadasCount() }}
+          </ion-badge>
+        </div>
       </ion-toolbar>
     </ion-header>
 
@@ -49,6 +62,7 @@ import { UiFeedbackComponent } from '../../shared/components/ui-feedback/ui-feed
         <p>Registra las actas de Alcaldía y Prefectura de las JRV asignadas a tu usuario.</p>
         <app-ui-feedback [requestState]="escrutinio.jrvsState()" />
         <app-ui-feedback [requestState]="escrutinio.actasState()" />
+        <app-ui-feedback [requestState]="offlineSync.estadoSincronizacion()" />
 
         @if (escrutinio.jrvs().length === 0 && escrutinio.jrvsState().status === 'success') {
           <p role="status">No tienes JRV asignadas. Contacta al Coordinador de Recinto.</p>
@@ -87,17 +101,37 @@ import { UiFeedbackComponent } from '../../shared/components/ui-feedback/ui-feed
             [acta]="actaSeleccionada()"
           />
         }
+
+        <ion-toast
+          [isOpen]="offlineSync.notificacion() !== null"
+          [message]="offlineSync.notificacion() ?? ''"
+          [duration]="3500"
+          (didDismiss)="offlineSync.limpiarNotificacion()"
+        ></ion-toast>
       </main>
     </ion-content>
   `,
+  styles: [`
+    .sync-badges {
+      display: flex;
+      gap: 0.35rem;
+      padding-inline-end: 0.5rem;
+    }
+  `],
 })
 export class VeedorPage {
   readonly escrutinio = inject(EscrutinioStateService);
+  readonly offlineSync = inject(OfflineSyncService);
   private readonly auth = inject(AuthStateService);
   readonly dignidades: readonly Dignidad[] = ['ALCALDE', 'PREFECTO'];
   readonly jrvSeleccionada = signal('');
   readonly dignidadSeleccionada = signal<Dignidad>('ALCALDE');
   readonly recintoId = computed(() => this.auth.usuarioActual()?.recintoId ?? '');
+  readonly sincronizadasCount = computed(() =>
+    this.escrutinio.actas().filter(
+      (acta) => !this.offlineSync.estaPendiente(acta.jrvId, acta.dignidad),
+    ).length,
+  );
   readonly actaSeleccionada = computed(() => {
     const jrvId = this.jrvSeleccionada();
     return jrvId
@@ -116,6 +150,10 @@ export class VeedorPage {
   }
 
   estadoActa(jrvId: string, dignidad: Dignidad): string {
+    if (this.offlineSync.estaPendiente(jrvId, dignidad)) {
+      return 'Pendiente de envío';
+    }
+
     const acta = this.escrutinio.actaPara(jrvId, dignidad);
     if (!acta) {
       return 'Pendiente de registro';

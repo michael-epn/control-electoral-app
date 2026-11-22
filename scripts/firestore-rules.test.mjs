@@ -53,6 +53,7 @@ function acta(id, jrvId, ownerUid = 'veedor_1') {
     fotoUrl: 'https://storage.example.test/signed-acta',
     gps: { lat: -0.2, lng: -78.5 },
     auditadaPorCoordinador: false,
+    client_timestamp: Date.now(),
   };
 }
 
@@ -135,6 +136,11 @@ test('veedor_1 solo puede leer su JRV y recibe permission-denied sobre JRV-02', 
     updateDoc(doc(db, 'actas', 'acta-JRV-01'), {
       votosNulos: 1,
       totalSufragantes: 6,
+    }),
+  );
+  await assertPermissionDenied(
+    updateDoc(doc(db, 'actas', 'acta-JRV-01'), {
+      client_timestamp: Date.now() + 60 * 60 * 1000,
     }),
   );
   await assertSucceeds(setDoc(doc(db, 'actas', 'acta-new-JRV-01'), acta('acta-new-JRV-01', 'JRV-01')));

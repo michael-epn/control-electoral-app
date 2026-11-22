@@ -20,5 +20,6 @@ export interface ActaElectoral {
   readonly fotoUrl: string | null;
   readonly gps: CoordenadasGps;
   readonly auditadaPorCoordinador: boolean;
+  readonly client_timestamp?: number;
   readonly bloqueada?: boolean;
 }
