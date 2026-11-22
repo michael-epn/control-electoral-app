@@ -5,5 +5,5 @@ export interface Candidato {
   readonly nombres: string;
   readonly apellidos: string;
   readonly dignidad: Dignidad;
-  readonly organizacionPoliticaId: string;
+  readonly organizacionPoliticaId: string | null;
 }
