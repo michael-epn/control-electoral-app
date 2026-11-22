@@ -1,0 +1,7 @@
+{
+  "name": "control-electoral-app",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "angular"
+}
