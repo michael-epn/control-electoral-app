@@ -160,6 +160,17 @@ export class AuthStateService {
     return this.authInicializado;
   }
 
+  limpiarError(): void {
+    if (this.authState().status !== 'error') {
+      return;
+    }
+
+    const usuario = this.usuarioActual();
+    this.authState.set(usuario
+      ? { status: 'success', data: usuario }
+      : { status: 'idle' });
+  }
+
   async iniciarSesionPorCedula(
     cedula: string,
     contrasena: string,

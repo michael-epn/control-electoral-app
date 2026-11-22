@@ -17,6 +17,7 @@ export interface ActaElectoral {
   readonly votosBlancos: number;
   readonly totalSufragantes: number;
   readonly fotoPath: string | null;
+  readonly fotoUrl: string | null;
   readonly gps: CoordenadasGps;
   readonly auditadaPorCoordinador: boolean;
   readonly bloqueada?: boolean;

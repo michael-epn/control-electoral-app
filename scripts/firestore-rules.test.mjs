@@ -11,8 +11,10 @@ import {
   doc,
   getDocs,
   getDoc,
+  query,
   setDoc,
   updateDoc,
+  where,
   writeBatch,
 } from 'firebase/firestore';
 
@@ -31,7 +33,7 @@ async function assertPermissionDenied(operation) {
   });
 }
 
-function acta(id, jrvId) {
+function acta(id, jrvId, ownerUid = 'veedor_1') {
   return {
     id,
     jrvId,
@@ -47,7 +49,8 @@ function acta(id, jrvId) {
     votosNulos: 0,
     votosBlancos: 0,
     totalSufragantes: 5,
-    fotoPath: null,
+    fotoPath: `${ownerUid}/recinto_1/${id}.jpg`,
+    fotoUrl: 'https://storage.example.test/signed-acta',
     gps: { lat: -0.2, lng: -78.5 },
     auditadaPorCoordinador: false,
   };
@@ -92,7 +95,10 @@ before(async () => {
       veedorId: null,
     });
     await setDoc(doc(db, 'actas', 'acta-JRV-01'), acta('acta-JRV-01', 'JRV-01'));
-    await setDoc(doc(db, 'actas', 'acta-JRV-02'), acta('acta-JRV-02', 'JRV-02'));
+    await setDoc(
+      doc(db, 'actas', 'acta-JRV-02'),
+      acta('acta-JRV-02', 'JRV-02', 'veedor_2'),
+    );
     await setDoc(doc(db, 'cedulas_lookup', '1710034065'), {
       email: 'veedor@example.test',
       uid: 'veedor_1',
@@ -111,6 +117,15 @@ test('veedor_1 solo puede leer su JRV y recibe permission-denied sobre JRV-02', 
 
   await assertSucceeds(getDoc(doc(db, 'jrvs', 'JRV-01')));
   await assertPermissionDenied(getDoc(doc(db, 'jrvs', 'JRV-02')));
+  await assertSucceeds(
+    getDocs(query(collection(db, 'jrvs'), where('veedorId', '==', 'veedor_1'))),
+  );
+  await assertSucceeds(
+    getDocs(query(collection(db, 'actas'), where('jrvId', '==', 'JRV-01'))),
+  );
+  await assertPermissionDenied(
+    getDocs(query(collection(db, 'actas'), where('jrvId', '==', 'JRV-02'))),
+  );
   await assertPermissionDenied(
     updateDoc(doc(db, 'jrvs', 'JRV-02'), { veedorId: 'veedor_1' }),
   );
@@ -129,6 +144,37 @@ test('veedor_1 solo puede leer su JRV y recibe permission-denied sobre JRV-02', 
   );
   await assertPermissionDenied(
     setDoc(doc(db, 'actas', 'acta-new-JRV-02'), acta('acta-new-JRV-02', 'JRV-02')),
+  );
+});
+
+test('el Coordinador de Recinto puede corregir y auditar un acta de su recinto', async () => {
+  const coordinatorDb = testEnv.authenticatedContext('recinto_coordinator', {
+    email_verified: true,
+  }).firestore();
+
+  await assertSucceeds(
+    getDocs(query(
+      collection(coordinatorDb, 'actas'),
+      where('jrvId', '==', 'JRV-01'),
+      where('recintoId', '==', 'recinto_1'),
+    )),
+  );
+
+  await assertSucceeds(
+    updateDoc(doc(coordinatorDb, 'actas', 'acta-JRV-01'), {
+      votosNulos: 2,
+      totalSufragantes: 7,
+      fotoPath: 'recinto_coordinator/recinto_1/correccion.jpg',
+      fotoUrl: 'https://storage.example.test/signed-correction',
+      auditadaPorCoordinador: true,
+    }),
+  );
+
+  const veedorDb = testEnv.authenticatedContext('veedor_1', {
+    email_verified: true,
+  }).firestore();
+  await assertPermissionDenied(
+    updateDoc(doc(veedorDb, 'actas', 'acta-JRV-01'), { votosNulos: 3 }),
   );
 });
 

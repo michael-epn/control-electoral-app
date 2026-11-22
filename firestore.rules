@@ -63,20 +63,16 @@ service cloud.firestore {
           || (isRecinto()
             && getAfter(usuarioPath(request.resource.data.uid)).data.rol == 'VEEDOR'
             && getAfter(usuarioPath(request.resource.data.uid)).data.recintoId
-              == getUserData().recintoId));
+              == getUserData().get('recintoId', null)));
     }
 
     function canReadActaInRecinto(data) {
       return isRecinto()
-        && data.recintoId == getUserData().recintoId
-        && exists(jrvPath(data.jrvId))
-        && get(jrvPath(data.jrvId)).data.recintoId == data.recintoId;
+        && data.recintoId == getUserData().get('recintoId', null);
     }
 
     function canReadActaAsVeedor(data) {
-      return isAssignedVeedor(data.jrvId)
-        && exists(jrvPath(data.jrvId))
-        && get(jrvPath(data.jrvId)).data.recintoId == data.recintoId;
+      return isAssignedVeedor(data.jrvId);
     }
 
     function isUnlockedActa(data) {
@@ -139,6 +135,7 @@ service cloud.firestore {
           'votosBlancos',
           'totalSufragantes',
           'fotoPath',
+          'fotoUrl',
           'gps',
           'auditadaPorCoordinador'
         ])
@@ -152,6 +149,7 @@ service cloud.firestore {
           'votosBlancos',
           'totalSufragantes',
           'fotoPath',
+          'fotoUrl',
           'gps',
           'auditadaPorCoordinador',
           'bloqueada'
@@ -163,9 +161,10 @@ service cloud.firestore {
         && get(jrvPath(data.jrvId)).data.recintoId == data.recintoId
         && data.dignidad in ['ALCALDE', 'PREFECTO']
         && validVoteTotals(data)
-        && (data.fotoPath == null
-          || (data.fotoPath is string
-            && data.fotoPath.split('/')[0] == request.auth.uid))
+        && data.fotoPath is string
+        && data.fotoPath.split('/')[0] == request.auth.uid
+        && data.fotoUrl is string
+        && data.fotoUrl.matches('https?://.+')
         && validGps(data)
         && data.auditadaPorCoordinador is bool
         && (!data.keys().hasAny(['bloqueada']) || data.bloqueada is bool)
@@ -182,11 +181,28 @@ service cloud.firestore {
           'votosNulos',
           'votosBlancos',
           'totalSufragantes',
-          'gps'
+          'gps',
+          'fotoPath',
+          'fotoUrl',
+          'auditadaPorCoordinador'
         ])
+        && (!request.resource.data.diff(data).affectedKeys()
+            .hasAny(['fotoPath', 'fotoUrl'])
+          || request.resource.data.diff(data).affectedKeys()
+            .hasAll(['fotoPath', 'fotoUrl']))
+        && (!request.resource.data.diff(data).affectedKeys()
+            .hasAny(['fotoPath'])
+          || (request.resource.data.fotoPath is string
+            && request.resource.data.fotoPath.split('/')[0] == request.auth.uid))
+        && request.resource.data.fotoUrl is string
+        && request.resource.data.fotoUrl.matches('https?://.+')
+        && (!request.resource.data.diff(data).affectedKeys()
+            .hasAny(['auditadaPorCoordinador'])
+          || (isRecinto()
+            && request.resource.data.auditadaPorCoordinador == true))
         && validVoteTotals(request.resource.data)
         && validGps(request.resource.data)
-        && isUnlockedActa(request.resource.data);
+        && (isRecinto() || isUnlockedActa(request.resource.data));
     }
 
     match /usuarios/{uid} {
@@ -195,19 +211,19 @@ service cloud.firestore {
           || isProvincial()
           || (isRecinto()
             && resource.data.rol == 'VEEDOR'
-            && resource.data.recintoId == getUserData().recintoId));
+            && resource.data.recintoId == getUserData().get('recintoId', null)));
 
       allow list: if isProvincial()
         || (isRecinto()
           && resource.data.rol == 'VEEDOR'
-          && resource.data.recintoId == getUserData().recintoId);
+          && resource.data.recintoId == getUserData().get('recintoId', null));
 
       allow create: if signedIn()
         && request.resource.data.id == uid
         && ((isProvincial() && request.resource.data.rol == 'RECINTO')
           || (isRecinto()
             && request.resource.data.rol == 'VEEDOR'
-            && request.resource.data.recintoId == getUserData().recintoId));
+            && request.resource.data.recintoId == getUserData().get('recintoId', null)));
 
       allow update: if signedIn()
         && request.auth.uid == uid
@@ -222,21 +238,22 @@ service cloud.firestore {
 
     match /recintos/{recintoId} {
       allow get, list: if isProvincial()
-        || (isRecinto() && recintoId == getUserData().recintoId);
+        || (isRecinto()
+          && recintoId == getUserData().get('recintoId', null));
       allow create, update, delete: if isProvincial();
     }
 
     match /jrvs/{jrvId} {
       allow get, list: if isProvincial()
         || (isRecinto()
-          && resource.data.recintoId == getUserData().recintoId)
-        || isAssignedVeedor(jrvId);
+          && resource.data.recintoId == getUserData().get('recintoId', null))
+        || (isVeedor() && resource.data.veedorId == request.auth.uid);
 
       allow create, delete: if isProvincial();
 
       allow update: if isProvincial()
         || (isRecinto()
-          && resource.data.recintoId == getUserData().recintoId
+          && resource.data.recintoId == getUserData().get('recintoId', null)
           && request.resource.data.recintoId == resource.data.recintoId
           && request.resource.data.diff(resource.data)
             .affectedKeys().hasOnly(['veedorId'])
