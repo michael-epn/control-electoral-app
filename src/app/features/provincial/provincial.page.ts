@@ -7,21 +7,20 @@ import {
   IonCardHeader,
   IonCardTitle,
   IonContent,
-  IonHeader,
   IonItem,
+  IonInput,
   IonLabel,
   IonProgressBar,
   IonSelect,
   IonSelectOption,
-  IonTitle,
   IonToast,
-  IonToolbar,
 } from '@ionic/angular';
 import type { RequestState } from '../../core/models/request-state.model';
 import type { Usuario } from '../../core/models/usuario.model';
 import { AuthStateService } from '../../core/services/auth-state.service';
 import { EscrutinioStateService } from '../../core/services/escrutinio-state.service';
 import { cedulaEcuatorianaValidator } from '../../core/validators/cedula-ecuatoriana.validator';
+import { AppHeaderComponent } from '../../shared/components/app-header/app-header.component';
 import { UiFeedbackComponent } from '../../shared/components/ui-feedback/ui-feedback.component';
 
 function esEnteroPositivo(value: unknown): boolean {
@@ -40,23 +39,17 @@ function esEnteroPositivo(value: unknown): boolean {
     IonCardHeader,
     IonCardTitle,
     IonContent,
-    IonHeader,
     IonItem,
+    IonInput,
     IonLabel,
     IonProgressBar,
     IonSelect,
     IonSelectOption,
-    IonTitle,
     IonToast,
-    IonToolbar,
+    AppHeaderComponent,
   ],
   template: `
-    <ion-header>
-      <ion-toolbar>
-        <ion-title>Coordinación Provincial · Pichincha</ion-title>
-      </ion-toolbar>
-    </ion-header>
-
+    <app-header [titulo]="titulo" />
     <ion-content class="ion-padding">
       <main>
         <h1>Consolidado provincial</h1>
@@ -66,36 +59,41 @@ function esEnteroPositivo(value: unknown): boolean {
         <app-ui-feedback [requestState]="escrutinio.organizacionesState()" />
 
         <section aria-labelledby="dashboard-heading">
-          <h2 id="dashboard-heading">Avance del escrutinio</h2>
-          <ion-item>
-            <ion-label>Recinto</ion-label>
-            <ion-select
-              [value]="escrutinio.filtroRecintoId()"
-              interface="popover"
-              aria-label="Filtrar el dashboard por recinto"
-              (ionChange)="filtrarRecinto($event.detail.value)"
-            >
-              <ion-select-option value="">Todos los recintos</ion-select-option>
-              @for (recinto of escrutinio.recintos(); track recinto.id) {
-                <ion-select-option [value]="recinto.id">
-                  {{ recinto.nombre }} · {{ recinto.parroquia }}
-                </ion-select-option>
-              }
-            </ion-select>
-          </ion-item>
-          <p>
-            {{ metricas().actasIngresadas }} de {{ metricas().totalActasEsperadas }} actas
-            ({{ metricas().avancePorcentual.toFixed(1) }}%)
-          </p>
-          <ion-progress-bar [value]="metricas().avancePorcentual / 100"></ion-progress-bar>
-          <p>{{ metricas().totalJrvs }} JRV · 2 actas esperadas por mesa.</p>
-
-          <p>
-            Los votos se reciben por organización política. El esquema actual no asocia
-            cada candidatura con una organización; por eso el consolidado se presenta por sigla.
-          </p>
+          <ion-card class="ion-margin-bottom">
+            <ion-card-header>
+              <ion-card-title id="dashboard-heading">Avance del escrutinio</ion-card-title>
+            </ion-card-header>
+            <ion-card-content>
+              <ion-item>
+                <ion-label>Recinto</ion-label>
+                <ion-select
+                  [value]="escrutinio.filtroRecintoId()"
+                  interface="popover"
+                  aria-label="Filtrar el dashboard por recinto"
+                  (ionChange)="filtrarRecinto($event.detail.value)"
+                >
+                  <ion-select-option value="">Todos los recintos</ion-select-option>
+                  @for (recinto of escrutinio.recintos(); track recinto.id) {
+                    <ion-select-option [value]="recinto.id">
+                      {{ recinto.nombre }} · {{ recinto.parroquia }}
+                    </ion-select-option>
+                  }
+                </ion-select>
+              </ion-item>
+              <p>
+                {{ metricas().actasIngresadas }} de {{ metricas().totalActasEsperadas }} actas
+                ({{ metricas().avancePorcentual.toFixed(1) }}%)
+              </p>
+              <ion-progress-bar [value]="metricas().avancePorcentual / 100"></ion-progress-bar>
+              <p>{{ metricas().totalJrvs }} JRV · 2 actas esperadas por mesa.</p>
+              <p>
+                Los votos se reciben por organización política. El esquema actual no asocia
+                cada candidatura con una organización; por eso el consolidado se presenta por sigla.
+              </p>
+            </ion-card-content>
+          </ion-card>
           @for (dignidad of dignidades; track dignidad) {
-            <ion-card>
+            <ion-card class="ion-margin-bottom">
               <ion-card-header>
                 <ion-card-title>Votos para {{ dignidad }}</ion-card-title>
               </ion-card-header>
@@ -116,7 +114,7 @@ function esEnteroPositivo(value: unknown): boolean {
         <section aria-labelledby="recintos-heading">
           <h2 id="recintos-heading">Recintos y coordinadores asignados</h2>
           @for (recinto of escrutinio.recintos(); track recinto.id) {
-            <ion-card>
+            <ion-card class="ion-margin-bottom">
               <ion-card-header>
                 <ion-card-title>{{ recinto.nombre }}</ion-card-title>
               </ion-card-header>
@@ -135,105 +133,109 @@ function esEnteroPositivo(value: unknown): boolean {
             </ion-card>
           }
 
-          <h3>Crear recinto</h3>
-          <app-ui-feedback [requestState]="escrutinio.crearRecintoState()" />
-          <form [formGroup]="formularioRecinto" (ngSubmit)="crearRecinto()">
-            <label for="recinto-canton">Cantón</label>
-            <input id="recinto-canton" formControlName="canton" required />
-            <label for="recinto-parroquia">Parroquia</label>
-            <input id="recinto-parroquia" formControlName="parroquia" required />
-            <label for="recinto-nombre">Nombre</label>
-            <input id="recinto-nombre" formControlName="nombre" required />
-            <label for="recinto-jrvs">Cantidad de JRV</label>
-            <input
-              id="recinto-jrvs"
-              formControlName="cantidadJrv"
-              type="number"
-              min="1"
-              max="499"
-              step="1"
-              required
-            />
-            @if (
-              formularioRecinto.controls.cantidadJrv.touched
-              && formularioRecinto.controls.cantidadJrv.invalid
-            ) {
-              <p role="alert">Ingresa una cantidad entera entre 1 y 499.</p>
-            }
-            <ion-button
-              type="submit"
-              expand="block"
-              [disabled]="formularioRecinto.invalid || escrutinio.crearRecintoState().status === 'loading'"
-            >
-              Crear recinto y sus JRV
-            </ion-button>
-          </form>
-
-          <h3>Asignar Coordinador de Recinto</h3>
-          <app-ui-feedback [requestState]="estadoCoordinador()" />
-          <form [formGroup]="formularioCoordinador" (ngSubmit)="crearCoordinador()">
-            <label for="coordinador-cedula">Cédula</label>
-            <input
-              id="coordinador-cedula"
-              formControlName="cedula"
-              inputmode="numeric"
-              maxlength="10"
-              required
-            />
-            @if (
-              formularioCoordinador.controls.cedula.touched
-              && formularioCoordinador.controls.cedula.invalid
-            ) {
-              <p role="alert">Ingresa una cédula ecuatoriana válida.</p>
-            }
-            <label for="coordinador-nombres">Nombres</label>
-            <input id="coordinador-nombres" formControlName="nombres" required />
-            <label for="coordinador-apellidos">Apellidos</label>
-            <input id="coordinador-apellidos" formControlName="apellidos" required />
-            <label for="coordinador-email">Correo de confirmación</label>
-            <input id="coordinador-email" formControlName="email" type="email" required />
-            <label for="coordinador-telefono">Teléfono</label>
-            <input id="coordinador-telefono" formControlName="telefono" type="tel" />
-            <ion-item>
-              <ion-label>Recinto sin coordinador</ion-label>
-              <ion-select
-                formControlName="recintoId"
-                interface="popover"
-                aria-label="Seleccionar recinto para el coordinador"
-              >
-                @for (recinto of recintosSinCoordinador(); track recinto.id) {
-                  <ion-select-option [value]="recinto.id">{{ recinto.nombre }}</ion-select-option>
+          <ion-card class="ion-margin-bottom">
+            <ion-card-header>
+              <ion-card-title>Crear recinto</ion-card-title>
+            </ion-card-header>
+            <ion-card-content>
+              <app-ui-feedback [requestState]="escrutinio.crearRecintoState()" />
+              <form [formGroup]="formularioRecinto" (ngSubmit)="crearRecinto()">
+                <ion-input label="Cantón" labelPlacement="stacked" fill="outline"
+                  formControlName="canton" required />
+                <ion-input label="Parroquia" labelPlacement="stacked" fill="outline"
+                  formControlName="parroquia" required />
+                <ion-input label="Nombre" labelPlacement="stacked" fill="outline"
+                  formControlName="nombre" required />
+                <ion-input label="Cantidad de JRV" labelPlacement="stacked" fill="outline"
+                  formControlName="cantidadJrv" type="number" min="1" max="499" step="1" required />
+                @if (
+                  formularioRecinto.controls.cantidadJrv.touched
+                  && formularioRecinto.controls.cantidadJrv.invalid
+                ) {
+                  <p role="alert">Ingresa una cantidad entera entre 1 y 499.</p>
                 }
-              </ion-select>
-            </ion-item>
-            <ion-button
-              type="submit"
-              expand="block"
-              [disabled]="formularioCoordinador.invalid || estadoCoordinador().status === 'loading'"
-            >
-              Crear y asignar coordinador
-            </ion-button>
-          </form>
+                <ion-button
+                  type="submit"
+                  expand="block"
+                  [disabled]="formularioRecinto.invalid || escrutinio.crearRecintoState().status === 'loading'"
+                >
+                  Crear recinto y sus JRV
+                </ion-button>
+              </form>
+            </ion-card-content>
+          </ion-card>
+
+          <ion-card class="ion-margin-bottom">
+            <ion-card-header>
+              <ion-card-title>Asignar Coordinador de Recinto</ion-card-title>
+            </ion-card-header>
+            <ion-card-content>
+              <app-ui-feedback [requestState]="estadoCoordinador()" />
+              <form [formGroup]="formularioCoordinador" (ngSubmit)="crearCoordinador()">
+                <ion-input label="Cédula" labelPlacement="stacked" fill="outline"
+                  formControlName="cedula" inputmode="numeric" maxlength="10" required />
+                @if (
+                  formularioCoordinador.controls.cedula.touched
+                  && formularioCoordinador.controls.cedula.invalid
+                ) {
+                  <p role="alert">Ingresa una cédula ecuatoriana válida.</p>
+                }
+                <ion-input label="Nombres" labelPlacement="stacked" fill="outline"
+                  formControlName="nombres" required />
+                <ion-input label="Apellidos" labelPlacement="stacked" fill="outline"
+                  formControlName="apellidos" required />
+                <ion-input label="Correo de confirmación" labelPlacement="stacked" fill="outline"
+                  formControlName="email" type="email" required />
+                <ion-input label="Teléfono" labelPlacement="stacked" fill="outline"
+                  formControlName="telefono" type="tel" />
+                <ion-item>
+                  <ion-label>Recinto sin coordinador</ion-label>
+                  <ion-select
+                    formControlName="recintoId"
+                    interface="popover"
+                    aria-label="Seleccionar recinto para el coordinador"
+                  >
+                    @for (recinto of recintosSinCoordinador(); track recinto.id) {
+                      <ion-select-option [value]="recinto.id">{{ recinto.nombre }}</ion-select-option>
+                    }
+                  </ion-select>
+                </ion-item>
+                <ion-button
+                  type="submit"
+                  expand="block"
+                  [disabled]="formularioCoordinador.invalid || estadoCoordinador().status === 'loading'"
+                >
+                  Crear y asignar coordinador
+                </ion-button>
+              </form>
+            </ion-card-content>
+          </ion-card>
         </section>
 
         <section aria-labelledby="gps-heading">
-          <h2 id="gps-heading">Coordenadas GPS de las actas</h2>
-          @for (acta of actasFiltradas(); track acta.id) {
-            <ion-item>
-              <ion-label>
-                <h3>{{ nombreRecinto(acta.recintoId) }} · {{ acta.jrvId }} · {{ acta.dignidad }}</h3>
-                <p>Latitud {{ acta.gps.lat }} · Longitud {{ acta.gps.lng }}</p>
-              </ion-label>
-              <a
-                slot="end"
-                [href]="urlMapa(acta.gps.lat, acta.gps.lng)"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Ver mapa
-              </a>
-            </ion-item>
-          }
+          <ion-card class="ion-margin-bottom">
+            <ion-card-header>
+              <ion-card-title id="gps-heading">Coordenadas GPS de las actas</ion-card-title>
+            </ion-card-header>
+            <ion-card-content>
+              @for (acta of actasFiltradas(); track acta.id) {
+                <ion-item>
+                  <ion-label>
+                    <h3>{{ nombreRecinto(acta.recintoId) }} · {{ acta.jrvId }} · {{ acta.dignidad }}</h3>
+                    <p>Latitud {{ acta.gps.lat }} · Longitud {{ acta.gps.lng }}</p>
+                  </ion-label>
+                  <a
+                    slot="end"
+                    [href]="urlMapa(acta.gps.lat, acta.gps.lng)"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Ver mapa
+                  </a>
+                </ion-item>
+              }
+            </ion-card-content>
+          </ion-card>
         </section>
       </main>
 
@@ -247,16 +249,12 @@ function esEnteroPositivo(value: unknown): boolean {
   `,
   styles: [`
     section { margin-block: 1.5rem; }
-    form { display: grid; gap: 0.5rem; }
-    form > input {
-      border: 1px solid var(--ion-color-medium);
-      border-radius: 0.25rem;
-      font: inherit;
-      padding: 0.65rem;
-    }
+    form { display: grid; gap: 0.85rem; }
+    form ion-input { width: 100%; }
   `],
 })
 export class ProvincialPage {
+  readonly titulo = 'Coordinación Provincial · Pichincha';
   readonly escrutinio = inject(EscrutinioStateService);
   private readonly auth = inject(AuthStateService);
   readonly dignidades = ['ALCALDE', 'PREFECTO'] as const;

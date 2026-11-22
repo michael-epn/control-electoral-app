@@ -1,6 +1,15 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
+import {
+  IonButton,
+  IonCard,
+  IonCardContent,
+  IonCardHeader,
+  IonCardTitle,
+  IonContent,
+  IonInput,
+} from '@ionic/angular';
 import type { RequestState } from '../../core/models/request-state.model';
 import { AuthStateService } from '../../core/services/auth-state.service';
 import { cedulaEcuatorianaValidator } from '../../core/validators/cedula-ecuatoriana.validator';
@@ -9,33 +18,59 @@ import { UiFeedbackComponent } from '../../shared/components/ui-feedback/ui-feed
 @Component({
   selector: 'app-recuperar-clave-page',
   standalone: true,
-  imports: [ReactiveFormsModule, RouterLink, UiFeedbackComponent],
+  imports: [
+    IonButton,
+    IonCard,
+    IonCardContent,
+    IonCardHeader,
+    IonCardTitle,
+    IonContent,
+    IonInput,
+    ReactiveFormsModule,
+    RouterLink,
+    UiFeedbackComponent,
+  ],
   template: `
-    <main>
-      <h1>Recuperar contraseña</h1>
-      <p>Si la cédula está registrada, enviaremos las instrucciones al correo asociado.</p>
-      <app-ui-feedback [requestState]="requestState()" />
-      <form [formGroup]="formulario" (ngSubmit)="recuperarContrasena()">
-        <label for="cedula">Cédula</label>
-        <input
-          id="cedula"
-          type="text"
-          inputmode="numeric"
-          autocomplete="off"
-          maxlength="10"
-          formControlName="cedula"
-        />
-        @if (formulario.controls.cedula.touched && formulario.controls.cedula.invalid) {
-          <p role="alert">Ingresa una cédula ecuatoriana válida.</p>
-        }
+    <ion-content class="ion-padding">
+      <ion-card class="auth-card">
+        <ion-card-header>
+          <ion-card-title>Recuperar contraseña</ion-card-title>
+        </ion-card-header>
+        <ion-card-content>
+          <p>Si la cédula está registrada, enviaremos las instrucciones al correo asociado.</p>
+          <app-ui-feedback [requestState]="requestState()" />
+          <form [formGroup]="formulario" (ngSubmit)="recuperarContrasena()">
+            <ion-input
+              label="Cédula"
+              labelPlacement="stacked"
+              fill="outline"
+              type="text"
+              inputmode="numeric"
+              autocomplete="off"
+              maxlength="10"
+              formControlName="cedula"
+            />
+            @if (formulario.controls.cedula.touched && formulario.controls.cedula.invalid) {
+              <p role="alert">Ingresa una cédula ecuatoriana válida.</p>
+            }
 
-        <button type="submit" [disabled]="formulario.invalid || requestState().status === 'loading'">
-          Enviar instrucciones
-        </button>
-      </form>
-      <a routerLink="/auth">Volver a iniciar sesión</a>
-    </main>
+            <ion-button
+              type="submit"
+              expand="block"
+              [disabled]="formulario.invalid || requestState().status === 'loading'"
+            >
+              Enviar instrucciones
+            </ion-button>
+          </form>
+          <a routerLink="/auth">Volver a iniciar sesión</a>
+        </ion-card-content>
+      </ion-card>
+    </ion-content>
   `,
+  styles: [`
+    .auth-card { margin: 2rem auto; max-width: 32rem; }
+    form { display: grid; gap: 1rem; }
+  `],
 })
 export class RecuperarClavePage {
   private readonly auth = inject(AuthStateService);
@@ -47,6 +82,12 @@ export class RecuperarClavePage {
       validators: [Validators.required, cedulaEcuatorianaValidator()],
     }),
   });
+
+  ionViewWillEnter(): void {
+    if (this.requestState().status === 'error') {
+      this.requestState.set({ status: 'idle' });
+    }
+  }
 
   async recuperarContrasena(): Promise<void> {
     if (this.formulario.invalid) {

@@ -6,6 +6,7 @@ import {
   runInInjectionContext,
   signal,
 } from '@angular/core';
+import { Router } from '@angular/router';
 import {
   Auth,
   onAuthStateChanged,
@@ -188,6 +189,7 @@ export class AuthStateService {
   readonly requiereCambioClave = signal(false);
 
   private readonly injector = inject(Injector);
+  private readonly router = inject(Router);
   private readonly auth = inject(Auth);
   private readonly firestore = inject(Firestore);
   private readonly destroyRef = inject(DestroyRef);
@@ -233,6 +235,22 @@ export class AuthStateService {
     this.authState.set(usuario
       ? { status: 'success', data: usuario }
       : { status: 'idle' });
+  }
+
+  async cerrarSesion(): Promise<void> {
+    try {
+      await runInInjectionContext(this.injector, () => signOut(this.auth));
+    } catch (error) {
+      console.error('Detalle error Firebase:', error);
+      this.authState.set({ status: 'error', error: mensajeError(error) });
+      throw error;
+    }
+
+    this.usuarioActual.set(null);
+    this.requiereCambioClave.set(false);
+    this.passwordInicialUsada = false;
+    this.authState.set({ status: 'idle' });
+    await this.router.navigateByUrl('/auth/login', { replaceUrl: true });
   }
 
   async iniciarSesionPorCedula(

@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal, viewChild } from '@angular/core';
 import {
   IonBadge,
   IonButton,
@@ -7,18 +7,16 @@ import {
   IonCardHeader,
   IonCardTitle,
   IonContent,
-  IonHeader,
   IonItem,
   IonLabel,
-  IonTitle,
   IonToast,
-  IonToolbar,
 } from '@ionic/angular';
 import type { Dignidad } from '../../core/models/dignidad.model';
 import { AuthStateService } from '../../core/services/auth-state.service';
 import { EscrutinioStateService } from '../../core/services/escrutinio-state.service';
 import { OfflineSyncService } from '../../core/services/offline-sync.service';
 import { ActaEditorComponent } from '../../shared/components/acta-editor/acta-editor.component';
+import { AppHeaderComponent } from '../../shared/components/app-header/app-header.component';
 import { UiFeedbackComponent } from '../../shared/components/ui-feedback/ui-feedback.component';
 
 @Component({
@@ -34,30 +32,27 @@ import { UiFeedbackComponent } from '../../shared/components/ui-feedback/ui-feed
     IonCardHeader,
     IonCardTitle,
     IonContent,
-    IonHeader,
     IonItem,
     IonLabel,
-    IonTitle,
     IonToast,
-    IonToolbar,
+    AppHeaderComponent,
   ],
   template: `
-    <ion-header>
-      <ion-toolbar>
-        <ion-title>Panel de veeduría</ion-title>
-        <div slot="end" class="sync-badges" aria-live="polite">
-          <ion-badge color="warning">
-            Pendientes de envío: {{ offlineSync.pendientesCount() }}
-          </ion-badge>
-          <ion-badge color="success">
-            Sincronizadas: {{ sincronizadasCount() }}
-          </ion-badge>
-        </div>
-      </ion-toolbar>
-    </ion-header>
-
+    <app-header [titulo]="titulo" />
     <ion-content class="ion-padding">
       <main>
+        <ion-card class="ion-margin-bottom">
+          <ion-card-content>
+            <div class="sync-badges" aria-live="polite">
+              <ion-badge color="warning">
+                Pendientes de envío: {{ offlineSync.pendientesCount() }}
+              </ion-badge>
+              <ion-badge color="success">
+                Sincronizadas: {{ sincronizadasCount() }}
+              </ion-badge>
+            </div>
+          </ion-card-content>
+        </ion-card>
         <h1>Mis Juntas Receptoras del Voto</h1>
         <p>Registra las actas de Alcaldía y Prefectura de las JRV asignadas a tu usuario.</p>
         <app-ui-feedback [requestState]="escrutinio.jrvsState()" />
@@ -69,7 +64,7 @@ import { UiFeedbackComponent } from '../../shared/components/ui-feedback/ui-feed
         }
 
         @for (jrv of escrutinio.jrvs(); track jrv.id) {
-          <ion-card>
+          <ion-card class="ion-margin-bottom">
             <ion-card-header>
               <ion-card-title>JRV-{{ jrv.numero.toString().padStart(2, '0') }}</ion-card-title>
             </ion-card-header>
@@ -94,12 +89,16 @@ import { UiFeedbackComponent } from '../../shared/components/ui-feedback/ui-feed
         }
 
         @if (jrvSeleccionada() && recintoId()) {
-          <app-acta-editor
-            [recintoId]="recintoId()"
-            [jrvId]="jrvSeleccionada()"
-            [dignidad]="dignidadSeleccionada()"
-            [acta]="actaSeleccionada()"
-          />
+          <ion-card class="ion-margin-bottom">
+            <ion-card-content>
+              <app-acta-editor
+                [recintoId]="recintoId()"
+                [jrvId]="jrvSeleccionada()"
+                [dignidad]="dignidadSeleccionada()"
+                [acta]="actaSeleccionada()"
+              />
+            </ion-card-content>
+          </ion-card>
         }
 
         <ion-toast
@@ -120,9 +119,11 @@ import { UiFeedbackComponent } from '../../shared/components/ui-feedback/ui-feed
   `],
 })
 export class VeedorPage {
+  readonly titulo = 'Panel de veeduría';
   readonly escrutinio = inject(EscrutinioStateService);
   readonly offlineSync = inject(OfflineSyncService);
   private readonly auth = inject(AuthStateService);
+  private readonly actaEditor = viewChild(ActaEditorComponent);
   readonly dignidades: readonly Dignidad[] = ['ALCALDE', 'PREFECTO'];
   readonly jrvSeleccionada = signal('');
   readonly dignidadSeleccionada = signal<Dignidad>('ALCALDE');
@@ -142,6 +143,8 @@ export class VeedorPage {
   ionViewWillEnter(): void {
     this.auth.limpiarError();
     this.escrutinio.limpiarErrores();
+    this.actaEditor()?.limpiarErrores();
+    this.offlineSync.limpiarNotificacion();
   }
 
   seleccionarActa(jrvId: string, dignidad: Dignidad): void {

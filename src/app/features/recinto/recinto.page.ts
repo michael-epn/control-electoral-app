@@ -7,14 +7,12 @@ import {
   IonCardHeader,
   IonCardTitle,
   IonContent,
-  IonHeader,
   IonItem,
+  IonInput,
   IonLabel,
   IonSelect,
   IonSelectOption,
-  IonTitle,
   IonToast,
-  IonToolbar,
 } from '@ionic/angular';
 import type { ActaElectoral } from '../../core/models/acta-electoral.model';
 import type { Dignidad } from '../../core/models/dignidad.model';
@@ -23,6 +21,7 @@ import type { Usuario } from '../../core/models/usuario.model';
 import { AuthStateService } from '../../core/services/auth-state.service';
 import { EscrutinioStateService } from '../../core/services/escrutinio-state.service';
 import { ActaEditorComponent } from '../../shared/components/acta-editor/acta-editor.component';
+import { AppHeaderComponent } from '../../shared/components/app-header/app-header.component';
 import { UiFeedbackComponent } from '../../shared/components/ui-feedback/ui-feedback.component';
 import { cedulaEcuatorianaValidator } from '../../core/validators/cedula-ecuatoriana.validator';
 
@@ -39,22 +38,16 @@ import { cedulaEcuatorianaValidator } from '../../core/validators/cedula-ecuator
     IonCardHeader,
     IonCardTitle,
     IonContent,
-    IonHeader,
     IonItem,
+    IonInput,
     IonLabel,
     IonSelect,
     IonSelectOption,
-    IonTitle,
     IonToast,
-    IonToolbar,
+    AppHeaderComponent,
   ],
   template: `
-    <ion-header>
-      <ion-toolbar>
-        <ion-title>Coordinación de recinto</ion-title>
-      </ion-toolbar>
-    </ion-header>
-
+    <app-header [titulo]="titulo" />
     <ion-content class="ion-padding">
       <main>
         <h1>{{ recinto()?.nombre ?? 'Mi recinto' }}</h1>
@@ -71,7 +64,7 @@ import { cedulaEcuatorianaValidator } from '../../core/validators/cedula-ecuator
           <app-ui-feedback [requestState]="escrutinio.usuariosState()" />
           <app-ui-feedback [requestState]="estadoAsignacion()" />
           @for (jrv of escrutinio.jrvs(); track jrv.id) {
-            <ion-card>
+            <ion-card class="ion-margin-bottom">
               <ion-card-header>
                 <ion-card-title>{{ etiquetaJrv(jrv.numero) }}</ion-card-title>
               </ion-card-header>
@@ -106,51 +99,57 @@ import { cedulaEcuatorianaValidator } from '../../core/validators/cedula-ecuator
         </section>
 
         <section aria-labelledby="veedor-heading">
-          <h2 id="veedor-heading">Crear veedor</h2>
-          <app-ui-feedback [requestState]="estadoAlta()" />
-          <form [formGroup]="formularioVeedor" (ngSubmit)="crearVeedor()">
-            <label for="veedor-cedula">Cédula</label>
-            <input id="veedor-cedula" formControlName="cedula" inputmode="numeric" maxlength="10" />
-            @if (
-              formularioVeedor.controls.cedula.touched
-              && formularioVeedor.controls.cedula.invalid
-            ) {
-              <p role="alert">Ingresa una cédula ecuatoriana válida.</p>
-            }
-
-            <label for="veedor-nombres">Nombres</label>
-            <input id="veedor-nombres" formControlName="nombres" autocomplete="given-name" />
-            <label for="veedor-apellidos">Apellidos</label>
-            <input id="veedor-apellidos" formControlName="apellidos" autocomplete="family-name" />
-            <label for="veedor-email">Correo de confirmación</label>
-            <input id="veedor-email" formControlName="email" type="email" autocomplete="email" />
-            <label for="veedor-telefono">Teléfono</label>
-            <input id="veedor-telefono" formControlName="telefono" type="tel" autocomplete="tel" />
-
-            <ion-item>
-              <ion-label>JRV iniciales</ion-label>
-              <ion-select
-                formControlName="jrvIds"
-                multiple="true"
-                interface="popover"
-                aria-label="Asignar JRV iniciales al veedor"
-              >
-                @for (jrv of jrvsDisponibles(); track jrv.id) {
-                  <ion-select-option [value]="jrv.id">
-                    {{ etiquetaJrv(jrv.numero) }}
-                  </ion-select-option>
+          <ion-card class="ion-margin-bottom">
+            <ion-card-header>
+              <ion-card-title id="veedor-heading">Crear veedor</ion-card-title>
+            </ion-card-header>
+            <ion-card-content>
+              <app-ui-feedback [requestState]="estadoAlta()" />
+              <form [formGroup]="formularioVeedor" (ngSubmit)="crearVeedor()">
+                <ion-input label="Cédula" labelPlacement="stacked" fill="outline"
+                  formControlName="cedula" inputmode="numeric" maxlength="10" required />
+                @if (
+                  formularioVeedor.controls.cedula.touched
+                  && formularioVeedor.controls.cedula.invalid
+                ) {
+                  <p role="alert">Ingresa una cédula ecuatoriana válida.</p>
                 }
-              </ion-select>
-            </ion-item>
 
-            <ion-button
-              type="submit"
-              expand="block"
-              [disabled]="formularioVeedor.invalid || estadoAlta().status === 'loading'"
-            >
-              Crear veedor y asignar JRV
-            </ion-button>
-          </form>
+                <ion-input label="Nombres" labelPlacement="stacked" fill="outline"
+                  formControlName="nombres" autocomplete="given-name" required />
+                <ion-input label="Apellidos" labelPlacement="stacked" fill="outline"
+                  formControlName="apellidos" autocomplete="family-name" required />
+                <ion-input label="Correo de confirmación" labelPlacement="stacked" fill="outline"
+                  formControlName="email" type="email" autocomplete="email" required />
+                <ion-input label="Teléfono" labelPlacement="stacked" fill="outline"
+                  formControlName="telefono" type="tel" autocomplete="tel" />
+
+                <ion-item>
+                  <ion-label>JRV iniciales</ion-label>
+                  <ion-select
+                    formControlName="jrvIds"
+                    multiple="true"
+                    interface="popover"
+                    aria-label="Asignar JRV iniciales al veedor"
+                  >
+                    @for (jrv of jrvsDisponibles(); track jrv.id) {
+                      <ion-select-option [value]="jrv.id">
+                        {{ etiquetaJrv(jrv.numero) }}
+                      </ion-select-option>
+                    }
+                  </ion-select>
+                </ion-item>
+
+                <ion-button
+                  type="submit"
+                  expand="block"
+                  [disabled]="formularioVeedor.invalid || estadoAlta().status === 'loading'"
+                >
+                  Crear veedor y asignar JRV
+                </ion-button>
+              </form>
+            </ion-card-content>
+          </ion-card>
         </section>
 
         <section aria-labelledby="audit-heading">
@@ -159,7 +158,7 @@ import { cedulaEcuatorianaValidator } from '../../core/validators/cedula-ecuator
             <p role="status">Aún no se han ingresado actas en este recinto.</p>
           }
           @for (acta of escrutinio.actas(); track acta.id) {
-            <ion-card>
+            <ion-card class="ion-margin-bottom">
               <ion-card-header>
                 <ion-card-title>{{ etiquetaJrvNumero(acta.jrvId) }} · {{ acta.dignidad }}</ion-card-title>
               </ion-card-header>
@@ -182,14 +181,18 @@ import { cedulaEcuatorianaValidator } from '../../core/validators/cedula-ecuator
           }
 
           @if (actaSeleccionada(); as seleccionada) {
-            <app-acta-editor
-              #actaEditor
-              [recintoId]="seleccionada.recintoId"
-              [jrvId]="seleccionada.jrvId"
-              [dignidad]="seleccionada.dignidad"
-              [acta]="seleccionada"
-              [auditoria]="true"
-            />
+            <ion-card class="ion-margin-bottom">
+              <ion-card-content>
+                <app-acta-editor
+                  #actaEditor
+                  [recintoId]="seleccionada.recintoId"
+                  [jrvId]="seleccionada.jrvId"
+                  [dignidad]="seleccionada.dignidad"
+                  [acta]="seleccionada"
+                  [auditoria]="true"
+                />
+              </ion-card-content>
+            </ion-card>
             <ion-button type="button" fill="clear" (click)="cerrarAuditoria()">
               Cerrar editor
             </ion-button>
@@ -207,16 +210,12 @@ import { cedulaEcuatorianaValidator } from '../../core/validators/cedula-ecuator
   `,
   styles: [`
     section { margin-block: 1.5rem; }
-    form { display: grid; gap: 0.5rem; }
-    form > input {
-      border: 1px solid var(--ion-color-medium);
-      border-radius: 0.25rem;
-      font: inherit;
-      padding: 0.65rem;
-    }
+    form { display: grid; gap: 0.85rem; }
+    form ion-input { width: 100%; }
   `],
 })
 export class RecintoPage {
+  readonly titulo = 'Coordinación de recinto';
   readonly escrutinio = inject(EscrutinioStateService);
   private readonly auth = inject(AuthStateService);
   private readonly actaEditor = viewChild(ActaEditorComponent);

@@ -35,12 +35,17 @@ import type { RequestState } from '../../../core/models/request-state.model';
     .loading { align-items: center; display: flex; gap: 0.75rem; }
     ion-skeleton-text { margin: 0; width: min(100%, 16rem); }
     .error {
-      background: var(--ion-color-danger-tint, #fce8e8);
+      background: #c62828;
       border-radius: 0.25rem;
-      color: var(--ion-color-danger-shade, #8b0000);
+      color: #ffffff;
       padding: 0.75rem;
     }
-    .success { color: var(--ion-color-success-shade, #1d6b37); }
+    .success {
+      background: #2e7d32;
+      border-radius: 0.25rem;
+      color: #ffffff;
+      padding: 0.75rem;
+    }
   `],
 })
 export class UiFeedbackComponent {
