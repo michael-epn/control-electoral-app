@@ -2,6 +2,7 @@ import type { RolUsuario } from './rol-usuario.model';
 
 export interface Usuario {
   readonly id: string;
+  readonly uid?: string;
   readonly cedula: string;
   readonly nombres: string;
   readonly apellidos: string;

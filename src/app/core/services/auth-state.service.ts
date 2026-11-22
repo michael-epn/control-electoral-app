@@ -1,4 +1,11 @@
-import { DestroyRef, Injectable, inject, signal } from '@angular/core';
+import {
+  DestroyRef,
+  Injectable,
+  Injector,
+  inject,
+  runInInjectionContext,
+  signal,
+} from '@angular/core';
 import {
   Auth,
   onAuthStateChanged,
@@ -60,19 +67,57 @@ function esRolUsuario(valor: unknown): valor is RolUsuario {
     && ROLES.some((rol) => rol === valor);
 }
 
+function validacionesUsuario(valor: unknown, uid: string): string[] {
+  if (!esRegistro(valor)) {
+    return ['El documento no contiene un objeto de perfil.'];
+  }
+
+  const validaciones: string[] = [];
+  const id = valor['id'] ?? valor['uid'] ?? uid;
+  const rolProvincial = valor['rol'] === 'PROVINCIAL';
+
+  if (id !== uid) {
+    validaciones.push('El campo id/uid no coincide con el UID autenticado.');
+  }
+  if (typeof valor['cedula'] !== 'string') {
+    validaciones.push('El campo cedula no es texto.');
+  }
+  if (typeof valor['nombres'] !== 'string') {
+    validaciones.push('El campo nombres no es texto.');
+  }
+  if (typeof valor['apellidos'] !== 'string') {
+    validaciones.push('El campo apellidos no es texto.');
+  }
+  if (typeof valor['telefono'] !== 'string' && valor['telefono'] !== null) {
+    validaciones.push('El campo telefono debe ser texto o null.');
+  }
+  if (typeof valor['email'] !== 'string') {
+    validaciones.push('El campo email no es texto.');
+  }
+  if (!esRolUsuario(valor['rol'])) {
+    validaciones.push('El campo rol no contiene un rol reconocido.');
+  }
+  if (typeof valor['debeCambiarClave'] !== 'boolean') {
+    validaciones.push('El campo debeCambiarClave no es booleano.');
+  }
+
+  if (!rolProvincial) {
+    if (typeof valor['recintoId'] !== 'string' && valor['recintoId'] !== null) {
+      validaciones.push('El campo recintoId debe ser texto o null.');
+    }
+    if (
+      !Array.isArray(valor['jrvIds'])
+      || !valor['jrvIds'].every((jrvId: unknown) => typeof jrvId === 'string')
+    ) {
+      validaciones.push('El campo jrvIds debe ser una lista de textos.');
+    }
+  }
+
+  return validaciones;
+}
+
 function esUsuario(valor: unknown, uid: string): valor is Usuario {
-  return esRegistro(valor)
-    && valor['id'] === uid
-    && typeof valor['cedula'] === 'string'
-    && typeof valor['nombres'] === 'string'
-    && typeof valor['apellidos'] === 'string'
-    && (typeof valor['telefono'] === 'string' || valor['telefono'] === null)
-    && typeof valor['email'] === 'string'
-    && esRolUsuario(valor['rol'])
-    && typeof valor['debeCambiarClave'] === 'boolean'
-    && (typeof valor['recintoId'] === 'string' || valor['recintoId'] === null)
-    && Array.isArray(valor['jrvIds'])
-    && valor['jrvIds'].every((jrvId: unknown) => typeof jrvId === 'string');
+  return validacionesUsuario(valor, uid).length === 0;
 }
 
 function codigoError(error: unknown): string | null {
@@ -88,8 +133,16 @@ function mensajeError(error: unknown): string {
     return error.message;
   }
 
+  if (error instanceof AggregateError) {
+    const details = [...error.errors].map(mensajeError);
+    if (details.length > 0) {
+      return details.join(' | ');
+    }
+  }
+
   switch (codigoError(error)) {
     case 'auth/invalid-credential':
+      return 'Contraseña incorrecta';
     case 'auth/wrong-password':
     case 'auth/user-not-found':
       return 'La cédula o la contraseña no son correctas.';
@@ -104,9 +157,16 @@ function mensajeError(error: unknown): string {
     case 'auth/requires-recent-login':
       return 'Vuelve a iniciar sesión antes de cambiar la contraseña.';
     case 'permission-denied':
-      return 'No tienes permiso para completar esta operación.';
-    default:
-      return 'No se pudo completar la operación. Inténtalo nuevamente.';
+      return 'Permisos insuficientes en Firestore';
+    default: {
+      const code = codigoError(error);
+      const detail = esRegistro(error) && typeof error['message'] === 'string'
+        ? error['message']
+        : error instanceof Error
+          ? error.message
+          : String(error);
+      return code ? `${code}: ${detail}` : detail;
+    }
   }
 }
 
@@ -127,6 +187,7 @@ export class AuthStateService {
   readonly authState = signal<RequestState<Usuario>>({ status: 'idle' });
   readonly requiereCambioClave = signal(false);
 
+  private readonly injector = inject(Injector);
   private readonly auth = inject(Auth);
   private readonly firestore = inject(Firestore);
   private readonly destroyRef = inject(DestroyRef);
@@ -141,17 +202,20 @@ export class AuthStateService {
       this.resolverAuthInicializado = resolve;
     });
 
-    const unsubscribe = onAuthStateChanged(
-      this.auth,
-      (firebaseUser) => {
-        void this.sincronizarUsuario(firebaseUser);
-      },
-      (error) => {
-        this.usuarioActual.set(null);
-        this.requiereCambioClave.set(false);
-        this.authState.set({ status: 'error', error: mensajeError(error) });
-        this.resolverInicializacion();
-      },
+    const unsubscribe = runInInjectionContext(this.injector, () =>
+      onAuthStateChanged(
+        this.auth,
+        (firebaseUser) => {
+          void this.sincronizarUsuario(firebaseUser);
+        },
+        (error) => {
+          console.error('Detalle error Firebase:', error);
+          this.usuarioActual.set(null);
+          this.requiereCambioClave.set(false);
+          this.authState.set({ status: 'error', error: mensajeError(error) });
+          this.resolverInicializacion();
+        },
+      ),
     );
     this.destroyRef.onDestroy(unsubscribe);
   }
@@ -179,22 +243,20 @@ export class AuthStateService {
     let sesionCreada = false;
 
     try {
-      if (!validarCedulaEcuatoriana(cedula)) {
+      if (!validarCedulaEcuatoriana(cedula.trim())) {
         throw new AuthFlowError('Ingresa una cédula ecuatoriana válida.');
       }
 
-      const mapeoSnapshot = await getDoc(
-        doc(this.firestore, 'cedulas_lookup', cedula),
+      const mapeoSnapshot = await runInInjectionContext(this.injector, () =>
+        getDoc(doc(this.firestore, 'cedulas_lookup', cedula.trim())),
       );
       const mapeo = mapeoSnapshot.data();
       if (!mapeoSnapshot.exists() || !esMapeoCedula(mapeo)) {
         throw new AuthFlowError('La cédula o la contraseña no son correctas.');
       }
 
-      const credencial = await signInWithEmailAndPassword(
-        this.auth,
-        mapeo.email,
-        contrasena,
+      const credencial = await runInInjectionContext(this.injector, () =>
+        signInWithEmailAndPassword(this.auth, mapeo.email, contrasena),
       );
       sesionCreada = true;
 
@@ -209,9 +271,11 @@ export class AuthStateService {
       let usuario = await this.cargarPerfil(credencial.user.uid);
       this.passwordInicialUsada = contrasena === CLAVE_INICIAL;
       if (this.passwordInicialUsada && !usuario.debeCambiarClave) {
-        await updateDoc(doc(this.firestore, 'usuarios', usuario.id), {
-          debeCambiarClave: true,
-        });
+        await runInInjectionContext(this.injector, () =>
+          updateDoc(doc(this.firestore, 'usuarios', usuario.id), {
+            debeCambiarClave: true,
+          }),
+        );
         usuario = { ...usuario, debeCambiarClave: true };
       }
 
@@ -222,11 +286,13 @@ export class AuthStateService {
       this.authState.set({ status: 'success', data: usuario });
       return usuario;
     } catch (error) {
+      console.error('Detalle error Firebase:', error);
       let fallo: unknown = error;
       if (sesionCreada && this.auth.currentUser) {
         try {
-          await signOut(this.auth);
+          await runInInjectionContext(this.injector, () => signOut(this.auth));
         } catch (errorAlCerrarSesion) {
+          console.error('Detalle error Firebase:', errorAlCerrarSesion);
           fallo = new AggregateError(
             [error, errorAlCerrarSesion],
             'Falló el acceso y no se pudo cerrar la sesión.',
@@ -242,23 +308,30 @@ export class AuthStateService {
   }
 
   async recuperarContrasenaPorCedula(cedula: string): Promise<void> {
-    if (!validarCedulaEcuatoriana(cedula)) {
-      throw new AuthFlowError('Ingresa una cédula ecuatoriana válida.');
-    }
+    try {
+      if (!validarCedulaEcuatoriana(cedula.trim())) {
+        throw new AuthFlowError('Ingresa una cédula ecuatoriana válida.');
+      }
 
-    const mapeoSnapshot = await getDoc(
-      doc(this.firestore, 'cedulas_lookup', cedula),
-    );
-    if (!mapeoSnapshot.exists()) {
-      return;
-    }
+      const mapeoSnapshot = await runInInjectionContext(this.injector, () =>
+        getDoc(doc(this.firestore, 'cedulas_lookup', cedula.trim())),
+      );
+      if (!mapeoSnapshot.exists()) {
+        return;
+      }
 
-    const mapeo = mapeoSnapshot.data();
-    if (!esMapeoCedula(mapeo)) {
-      throw new AuthFlowError('No se pudo resolver el correo para recuperar la cuenta.');
-    }
+      const mapeo = mapeoSnapshot.data();
+      if (!esMapeoCedula(mapeo)) {
+        throw new AuthFlowError('No se pudo resolver el correo para recuperar la cuenta.');
+      }
 
-    await sendPasswordResetEmail(this.auth, mapeo.email);
+      await runInInjectionContext(this.injector, () =>
+        sendPasswordResetEmail(this.auth, mapeo.email),
+      );
+    } catch (error) {
+      console.error('Detalle error Firebase:', error);
+      throw new Error(mensajeError(error), { cause: error });
+    }
   }
 
   async cambiarContrasena(nuevaContrasena: string): Promise<boolean> {
@@ -294,11 +367,15 @@ export class AuthStateService {
     }
 
     try {
-      await updatePassword(firebaseUser, nuevaContrasena);
+      await runInInjectionContext(this.injector, () =>
+        updatePassword(firebaseUser, nuevaContrasena),
+      );
       if (usuario.debeCambiarClave || this.passwordInicialUsada) {
-        await updateDoc(doc(this.firestore, 'usuarios', firebaseUser.uid), {
-          debeCambiarClave: false,
-        });
+        await runInInjectionContext(this.injector, () =>
+          updateDoc(doc(this.firestore, 'usuarios', firebaseUser.uid), {
+            debeCambiarClave: false,
+          }),
+        );
       }
 
       const usuarioActualizado: Usuario = {
@@ -315,6 +392,7 @@ export class AuthStateService {
       });
       return true;
     } catch (error) {
+      console.error('Detalle error Firebase:', error);
       this.authState.set({ status: 'error', error: mensajeError(error) });
       return false;
     }
@@ -335,6 +413,7 @@ export class AuthStateService {
 
       const nuevoUsuario: Usuario = {
         id: uid,
+        uid,
         cedula: datos.cedula,
         nombres: alta.nombres,
         apellidos: alta.apellidos,
@@ -347,75 +426,83 @@ export class AuthStateService {
       };
 
       try {
-        await runTransaction(this.firestore, async (transaction) => {
-          const mapeoRef = doc(this.firestore, 'cedulas_lookup', datos.cedula);
-          const mapeoSnapshot = await transaction.get(mapeoRef);
-          if (mapeoSnapshot.exists()) {
-            throw new AuthFlowError('Ya existe una cuenta asociada a esa cédula.');
-          }
-
-          if (alta.rol === 'RECINTO') {
-            const recintoRef = doc(this.firestore, 'recintos', alta.recintoId);
-            const recintoSnapshot = await transaction.get(recintoRef);
-            const recintoData = recintoSnapshot.data();
-            if (
-              !recintoSnapshot.exists()
-              || !esRegistro(recintoData)
-              || (typeof recintoData['coordinadorId'] === 'string'
-                && recintoData['coordinadorId'] !== '')
-            ) {
-              throw new AuthFlowError('El recinto no existe o ya tiene coordinador asignado.');
-            }
-          } else {
-            const jrvRefs = alta.jrvIds.map((jrvId) =>
+        const mapeoRef = runInInjectionContext(this.injector, () =>
+          doc(this.firestore, 'cedulas_lookup', datos.cedula),
+        );
+        const usuarioRef = runInInjectionContext(this.injector, () =>
+          doc(this.firestore, 'usuarios', uid),
+        );
+        const recintoRef = alta.rol === 'RECINTO'
+          ? runInInjectionContext(this.injector, () =>
+            doc(this.firestore, 'recintos', alta.recintoId),
+          )
+          : null;
+        const jrvRefs = alta.rol === 'VEEDOR'
+          ? alta.jrvIds.map((jrvId) =>
+            runInInjectionContext(this.injector, () =>
               doc(this.firestore, 'jrvs', jrvId),
-            );
-            const jrvSnapshots = await Promise.all(
-              jrvRefs.map((jrvRef) => transaction.get(jrvRef)),
-            );
-            for (const jrvSnapshot of jrvSnapshots) {
-              const jrvData = jrvSnapshot.data();
+            ),
+          )
+          : [];
+        await runInInjectionContext(this.injector, () =>
+          runTransaction(this.firestore, async (transaction) => {
+            const mapeoSnapshot = await transaction.get(mapeoRef);
+            if (mapeoSnapshot.exists()) {
+              throw new AuthFlowError('Ya existe una cuenta asociada a esa cédula.');
+            }
+
+            if (recintoRef) {
+              const recintoSnapshot = await transaction.get(recintoRef);
+              const recintoData = recintoSnapshot.data();
               if (
-                !jrvSnapshot.exists()
-                || !esRegistro(jrvData)
-                || jrvData['recintoId'] !== alta.recintoId
-                || (typeof jrvData['veedorId'] === 'string'
-                  && jrvData['veedorId'] !== '')
+                !recintoSnapshot.exists()
+                || !esRegistro(recintoData)
+                || (typeof recintoData['coordinadorId'] === 'string'
+                  && recintoData['coordinadorId'] !== '')
               ) {
-                throw new AuthFlowError(
-                  'Una JRV no existe, pertenece a otro recinto o ya tiene veedor asignado.',
-                );
+                throw new AuthFlowError('El recinto no existe o ya tiene coordinador asignado.');
+              }
+            } else {
+              const jrvSnapshots = await Promise.all(
+                jrvRefs.map((jrvRef) => transaction.get(jrvRef)),
+              );
+              for (const jrvSnapshot of jrvSnapshots) {
+                const jrvData = jrvSnapshot.data();
+                if (
+                  !jrvSnapshot.exists()
+                  || !esRegistro(jrvData)
+                  || jrvData['recintoId'] !== alta.recintoId
+                  || (typeof jrvData['veedorId'] === 'string'
+                    && jrvData['veedorId'] !== '')
+                ) {
+                  throw new AuthFlowError(
+                    'Una JRV no existe, pertenece a otro recinto o ya tiene veedor asignado.',
+                  );
+                }
               }
             }
-          }
 
-          transaction.set(
-            doc(this.firestore, 'usuarios', uid),
-            nuevoUsuario,
-          );
-          transaction.set(mapeoRef, {
-            uid,
-            email: alta.email,
-          });
+            transaction.set(usuarioRef, nuevoUsuario);
+            transaction.set(mapeoRef, {
+              uid,
+              email: alta.email,
+            });
 
-          if (alta.rol === 'RECINTO') {
-            transaction.update(
-              doc(this.firestore, 'recintos', alta.recintoId),
-              { coordinadorId: uid },
-            );
-          } else {
-            for (const jrvId of alta.jrvIds) {
-              transaction.update(
-                doc(this.firestore, 'jrvs', jrvId),
-                { veedorId: uid },
-              );
+            if (recintoRef) {
+              transaction.update(recintoRef, { coordinadorId: uid });
+            } else {
+              for (const jrvRef of jrvRefs) {
+                transaction.update(jrvRef, { veedorId: uid });
+              }
             }
-          }
-        });
+          }),
+        );
       } catch (error) {
+        console.error('Detalle error Firebase:', error);
         try {
           await this.eliminarCuentaSecundaria(alta.email);
         } catch (rollbackError) {
+          console.error('Detalle error Firebase:', rollbackError);
           throw new AggregateError(
             [error, rollbackError],
             'Falló la persistencia del perfil y no fue posible revertir la cuenta de Auth.',
@@ -431,6 +518,7 @@ export class AuthStateService {
       });
       return nuevoUsuario;
     } catch (error) {
+      console.error('Detalle error Firebase:', error);
       this.authState.set({ status: 'error', error: mensajeError(error) });
       throw error;
     }
@@ -451,8 +539,8 @@ export class AuthStateService {
       throw new AuthFlowError('Correo, nombres y apellidos son obligatorios.');
     }
 
-    const lookup = await getDoc(
-      doc(this.firestore, 'cedulas_lookup', datos.cedula),
+    const lookup = await runInInjectionContext(this.injector, () =>
+      getDoc(doc(this.firestore, 'cedulas_lookup', datos.cedula)),
     );
     if (lookup.exists()) {
       throw new AuthFlowError('Ya existe una cuenta asociada a esa cédula.');
@@ -466,8 +554,8 @@ export class AuthStateService {
         );
       }
 
-      const recintoSnapshot = await getDoc(
-        doc(this.firestore, 'recintos', recintoId),
+      const recintoSnapshot = await runInInjectionContext(this.injector, () =>
+        getDoc(doc(this.firestore, 'recintos', recintoId)),
       );
       const recinto = recintoSnapshot.data();
       if (
@@ -500,11 +588,11 @@ export class AuthStateService {
         throw new AuthFlowError('No repitas una JRV en la asignación del veedor.');
       }
 
-      const jrvSnapshots = await Promise.all(
-        jrvIds.map((jrvId) =>
+      const jrvSnapshots = await Promise.all(jrvIds.map((jrvId) =>
+        runInInjectionContext(this.injector, () =>
           getDoc(doc(this.firestore, 'jrvs', jrvId)),
         ),
-      );
+      ));
       for (const jrvSnapshot of jrvSnapshots) {
         const jrv = jrvSnapshot.data();
         if (
@@ -536,12 +624,44 @@ export class AuthStateService {
   }
 
   private async cargarPerfil(uid: string): Promise<Usuario> {
-    const perfilSnapshot = await getDoc(
-      doc(this.firestore, 'usuarios', uid),
+    const perfilSnapshot = await runInInjectionContext(this.injector, () =>
+      getDoc(doc(this.firestore, 'usuarios', uid)),
     );
-    const perfil = perfilSnapshot.data();
+    const perfilRecibido = perfilSnapshot.data();
+    const perfil = esRegistro(perfilRecibido)
+      ? {
+        ...perfilRecibido,
+        id: perfilRecibido['id'] ?? perfilRecibido['uid'] ?? uid,
+        uid,
+        debeCambiarClave: Boolean(perfilRecibido['debeCambiarClave']),
+        ...(perfilRecibido['rol'] === 'PROVINCIAL'
+          ? {
+            recintoId: typeof perfilRecibido['recintoId'] === 'string'
+              ? perfilRecibido['recintoId']
+              : null,
+            jrvIds: Array.isArray(perfilRecibido['jrvIds'])
+              && perfilRecibido['jrvIds'].every((jrvId: unknown) =>
+                typeof jrvId === 'string',
+              )
+              ? perfilRecibido['jrvIds']
+              : [],
+          }
+          : {}),
+      }
+      : perfilRecibido;
+
     if (!perfilSnapshot.exists() || !esUsuario(perfil, uid)) {
-      throw new AuthFlowError('La cuenta no tiene un perfil electoral válido.');
+      const validaciones = perfilSnapshot.exists()
+        ? validacionesUsuario(perfil, uid)
+        : ['No existe el documento de perfil en la colección usuarios.'];
+      console.error('Validación de perfil Firestore fallida:', {
+        uid,
+        perfil: perfilRecibido,
+        validaciones,
+      });
+      throw new AuthFlowError(
+        `La cuenta no tiene un perfil electoral válido: ${validaciones.join(' ')}`,
+      );
     }
 
     return perfil;
@@ -577,6 +697,7 @@ export class AuthStateService {
       );
       this.authState.set({ status: 'success', data: usuario });
     } catch (error) {
+      console.error('Detalle error Firebase:', error);
       this.usuarioActual.set(null);
       this.requiereCambioClave.set(false);
       this.authState.set({ status: 'error', error: mensajeError(error) });
@@ -604,19 +725,23 @@ export class AuthStateService {
     let uid: string | null = null;
 
     try {
-      const credencial = await createUserWithEmailAndPassword(
-        authSecundaria,
-        email,
-        CLAVE_INICIAL,
+      const credencial = await runInInjectionContext(this.injector, () =>
+        createUserWithEmailAndPassword(authSecundaria, email, CLAVE_INICIAL),
       );
-      usuarioCreado = credencial.user;
-      uid = usuarioCreado.uid;
-      await sendEmailVerification(usuarioCreado);
+      const cuentaCreada = credencial.user;
+      usuarioCreado = cuentaCreada;
+      uid = cuentaCreada.uid;
+      await runInInjectionContext(this.injector, () =>
+        sendEmailVerification(cuentaCreada),
+      );
     } catch (error) {
+      console.error('Detalle error Firebase:', error);
       if (usuarioCreado) {
         try {
-          await deleteUser(usuarioCreado);
+          const cuentaCreada = usuarioCreado;
+          await runInInjectionContext(this.injector, () => deleteUser(cuentaCreada));
         } catch (cleanupError) {
+          console.error('Detalle error Firebase:', cleanupError);
           throw new AggregateError(
             [error, cleanupError],
             'No se pudo enviar la verificación ni revertir la cuenta secundaria.',
@@ -627,7 +752,7 @@ export class AuthStateService {
     } finally {
       try {
         if (authSecundaria.currentUser) {
-          await signOut(authSecundaria);
+          await runInInjectionContext(this.injector, () => signOut(authSecundaria));
         }
       } finally {
         await deleteApp(app);
@@ -648,16 +773,14 @@ export class AuthStateService {
     const authSecundaria = getAuth(app);
 
     try {
-      const credencial = await signInWithEmailAndPassword(
-        authSecundaria,
-        email,
-        CLAVE_INICIAL,
+      const credencial = await runInInjectionContext(this.injector, () =>
+        signInWithEmailAndPassword(authSecundaria, email, CLAVE_INICIAL),
       );
-      await deleteUser(credencial.user);
+      await runInInjectionContext(this.injector, () => deleteUser(credencial.user));
     } finally {
       try {
         if (authSecundaria.currentUser) {
-          await signOut(authSecundaria);
+          await runInInjectionContext(this.injector, () => signOut(authSecundaria));
         }
       } finally {
         await deleteApp(app);

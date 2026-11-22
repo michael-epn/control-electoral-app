@@ -64,10 +64,10 @@ export class RecuperarClavePage {
         data: undefined,
         message: 'Si la cédula está registrada, recibirás instrucciones en el correo asociado.',
       });
-    } catch {
+    } catch (error) {
       this.requestState.set({
         status: 'error',
-        error: 'No se pudo procesar la recuperación. Inténtalo nuevamente.',
+        error: error instanceof Error ? error.message : String(error),
       });
     }
   }
