@@ -1,5 +1,6 @@
 export type { ActaElectoral, VotosOrganizaciones } from './acta-electoral.model';
 export type { Candidato } from './candidato.model';
+export type { CrearUsuarioDto } from './crear-usuario.dto';
 export type { CoordenadasGps } from './coordenadas-gps.model';
 export type { Dignidad } from './dignidad.model';
 export type { Jrv } from './jrv.model';

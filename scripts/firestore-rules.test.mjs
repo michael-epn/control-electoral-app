@@ -7,10 +7,13 @@ import {
   initializeTestEnvironment,
 } from '@firebase/rules-unit-testing';
 import {
+  collection,
   doc,
+  getDocs,
   getDoc,
   setDoc,
   updateDoc,
+  writeBatch,
 } from 'firebase/firestore';
 
 const projectId = 'demo-control-electoral-r8';
@@ -55,9 +58,23 @@ before(async () => {
     const db = context.firestore();
     await setDoc(doc(db, 'usuarios', 'veedor_1'), {
       id: 'veedor_1',
+      cedula: '1710034065',
       rol: 'VEEDOR',
       recintoId: 'recinto_1',
       jrvIds: ['JRV-01'],
+    });
+    await setDoc(doc(db, 'usuarios', 'provincial_1'), {
+      id: 'provincial_1',
+      rol: 'PROVINCIAL',
+    });
+    await setDoc(doc(db, 'usuarios', 'recinto_coordinator'), {
+      id: 'recinto_coordinator',
+      rol: 'RECINTO',
+      recintoId: 'recinto_1',
+    });
+    await setDoc(doc(db, 'recintos', 'recinto_2'), {
+      id: 'recinto_2',
+      coordinadorId: '',
     });
     await setDoc(doc(db, 'jrvs', 'JRV-01'), {
       id: 'JRV-01',
@@ -69,8 +86,17 @@ before(async () => {
       recintoId: 'recinto_1',
       veedorId: 'veedor_2',
     });
+    await setDoc(doc(db, 'jrvs', 'JRV-03'), {
+      id: 'JRV-03',
+      recintoId: 'recinto_1',
+      veedorId: null,
+    });
     await setDoc(doc(db, 'actas', 'acta-JRV-01'), acta('acta-JRV-01', 'JRV-01'));
     await setDoc(doc(db, 'actas', 'acta-JRV-02'), acta('acta-JRV-02', 'JRV-02'));
+    await setDoc(doc(db, 'cedulas_lookup', '1710034065'), {
+      email: 'veedor@example.test',
+      uid: 'veedor_1',
+    });
   });
 });
 
@@ -79,7 +105,9 @@ after(async () => {
 });
 
 test('veedor_1 solo puede leer su JRV y recibe permission-denied sobre JRV-02', async () => {
-  const db = testEnv.authenticatedContext('veedor_1').firestore();
+  const db = testEnv.authenticatedContext('veedor_1', {
+    email_verified: true,
+  }).firestore();
 
   await assertSucceeds(getDoc(doc(db, 'jrvs', 'JRV-01')));
   await assertPermissionDenied(getDoc(doc(db, 'jrvs', 'JRV-02')));
@@ -102,4 +130,64 @@ test('veedor_1 solo puede leer su JRV y recibe permission-denied sobre JRV-02', 
   await assertPermissionDenied(
     setDoc(doc(db, 'actas', 'acta-new-JRV-02'), acta('acta-new-JRV-02', 'JRV-02')),
   );
+});
+
+test('el Provincial crea un Coordinador de Recinto y su mapeo de cédula', async () => {
+  const db = testEnv.authenticatedContext('provincial_1', {
+    email_verified: true,
+  }).firestore();
+  const batch = writeBatch(db);
+  const uid = 'recinto_coordinator_2';
+  const email = 'recinto2@example.test';
+
+  batch.set(doc(db, 'usuarios', uid), {
+    id: uid,
+    cedula: '1710034073',
+    nombres: 'Coordinador',
+    apellidos: 'Recinto',
+    telefono: null,
+    email,
+    rol: 'RECINTO',
+    debeCambiarClave: true,
+    recintoId: 'recinto_2',
+    jrvIds: [],
+  });
+  batch.set(doc(db, 'cedulas_lookup', '1710034073'), { uid, email });
+  batch.update(doc(db, 'recintos', 'recinto_2'), { coordinadorId: uid });
+
+  await assertSucceeds(batch.commit());
+});
+
+test('el Coordinador de Recinto crea un Veedor y lo asigna a una JRV propia', async () => {
+  const db = testEnv.authenticatedContext('recinto_coordinator', {
+    email_verified: true,
+  }).firestore();
+  const batch = writeBatch(db);
+  const uid = 'veedor_3';
+  const email = 'veedor3@example.test';
+
+  batch.set(doc(db, 'usuarios', uid), {
+    id: uid,
+    cedula: '1710034081',
+    nombres: 'Veedor',
+    apellidos: 'Tres',
+    telefono: null,
+    email,
+    rol: 'VEEDOR',
+    debeCambiarClave: true,
+    recintoId: 'recinto_1',
+    jrvIds: ['JRV-03'],
+  });
+  batch.set(doc(db, 'cedulas_lookup', '1710034081'), { uid, email });
+  batch.update(doc(db, 'jrvs', 'JRV-03'), { veedorId: uid });
+
+  await assertSucceeds(batch.commit());
+  await assertSucceeds(getDoc(doc(db, 'jrvs', 'JRV-03')));
+});
+
+test('cedulas_lookup permite get puntual pero rechaza list', async () => {
+  const db = testEnv.unauthenticatedContext().firestore();
+
+  await assertSucceeds(getDoc(doc(db, 'cedulas_lookup', '1710034065')));
+  await assertPermissionDenied(getDocs(collection(db, 'cedulas_lookup')));
 });

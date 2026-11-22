@@ -11,24 +11,33 @@ export const routes: Routes = [
   },
   {
     path: 'provincial',
-    data: { roles: ['PROVINCIAL'] },
-    canActivate: [authGuard, roleGuard, firstLoginGuard],
+    canActivate: [
+      authGuard,
+      firstLoginGuard,
+      roleGuard(['PROVINCIAL']),
+    ],
     loadChildren: () =>
       import('./features/provincial/provincial.routes')
         .then((module) => module.PROVINCIAL_ROUTES),
   },
   {
     path: 'recinto',
-    data: { roles: ['RECINTO'] },
-    canActivate: [authGuard, roleGuard, firstLoginGuard],
+    canActivate: [
+      authGuard,
+      firstLoginGuard,
+      roleGuard(['RECINTO']),
+    ],
     loadChildren: () =>
       import('./features/recinto/recinto.routes')
         .then((module) => module.RECINTO_ROUTES),
   },
   {
     path: 'veedor',
-    data: { roles: ['VEEDOR'] },
-    canActivate: [authGuard, roleGuard, firstLoginGuard],
+    canActivate: [
+      authGuard,
+      firstLoginGuard,
+      roleGuard(['VEEDOR']),
+    ],
     loadChildren: () =>
       import('./features/veedor/veedor.routes')
         .then((module) => module.VEEDOR_ROUTES),
