@@ -10,12 +10,14 @@ export type VotosOrganizaciones = Readonly<Record<string, number>> & {
 export interface ActaElectoral {
   readonly id: string;
   readonly jrvId: string;
+  readonly recintoId: string;
   readonly dignidad: Dignidad;
   readonly votosOrganizaciones: VotosOrganizaciones;
   readonly votosNulos: number;
   readonly votosBlancos: number;
   readonly totalSufragantes: number;
-  readonly fotoUrl: string | null;
+  readonly fotoPath: string | null;
   readonly gps: CoordenadasGps;
   readonly auditadaPorCoordinador: boolean;
+  readonly bloqueada?: boolean;
 }

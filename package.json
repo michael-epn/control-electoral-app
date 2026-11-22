@@ -9,6 +9,7 @@
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
+    "test:firestore-rules": "firebase emulators:exec --project demo-control-electoral-r8 --only firestore \"node --test scripts/firestore-rules.test.mjs\"",
     "lint": "ng lint"
   },
   "private": true,
@@ -44,12 +45,14 @@
     "@angular/compiler-cli": "22.2.6",
     "@angular/language-service": "22.2.6",
     "@capacitor/cli": "8.6.2",
+    "@firebase/rules-unit-testing": "^6.0.0",
     "@ionic/angular-toolkit": "^13.0.0",
     "angular-eslint": "22.6.0",
     "eslint": "^10.10.0",
     "jsdom": "^31.0.0",
     "typescript": "~6.0.0",
     "typescript-eslint": "^8.61.0",
+    "vite": "^8.3.5",
     "vitest": "^5.1.0"
   },
   "description": "An Ionic project"

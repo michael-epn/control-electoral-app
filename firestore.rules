@@ -1,0 +1,261 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(
+        /databases/$(database)/documents/usuarios/$(request.auth.uid)
+      ).data;
+    }
+
+    function isProvincial() {
+      return signedIn() && getUserData().rol == 'PROVINCIAL';
+    }
+
+    function isRecinto() {
+      return signedIn() && getUserData().rol == 'RECINTO';
+    }
+
+    function isVeedor() {
+      return signedIn() && getUserData().rol == 'VEEDOR';
+    }
+
+    function jrvPath(jrvId) {
+      return /databases/$(database)/documents/jrvs/$(jrvId);
+    }
+
+    function usuarioPath(uid) {
+      return /databases/$(database)/documents/usuarios/$(uid);
+    }
+
+    function isVeedorOfRecinto(uid, recintoId) {
+      return exists(usuarioPath(uid))
+        && get(usuarioPath(uid)).data.rol == 'VEEDOR'
+        && get(usuarioPath(uid)).data.recintoId == recintoId;
+    }
+
+    function isAssignedVeedor(jrvId) {
+      return isVeedor()
+        && exists(jrvPath(jrvId))
+        && get(jrvPath(jrvId)).data.veedorId == request.auth.uid;
+    }
+
+    function canReadActaInRecinto(data) {
+      return isRecinto()
+        && data.recintoId == getUserData().recintoId
+        && exists(jrvPath(data.jrvId))
+        && get(jrvPath(data.jrvId)).data.recintoId == data.recintoId;
+    }
+
+    function canReadActaAsVeedor(data) {
+      return isAssignedVeedor(data.jrvId)
+        && exists(jrvPath(data.jrvId))
+        && get(jrvPath(data.jrvId)).data.recintoId == data.recintoId;
+    }
+
+    function isUnlockedActa(data) {
+      return (!data.keys().hasAny(['auditadaPorCoordinador'])
+          || data.auditadaPorCoordinador == false)
+        && (!data.keys().hasAny(['bloqueada']) || data.bloqueada == false);
+    }
+
+    function validVoteTotals(data) {
+      return data.votosOrganizaciones is map
+        && data.votosOrganizaciones.keys().hasAll([
+          'MUP', 'FCS', 'ARP', 'PDT', 'CPM'
+        ])
+        && data.votosOrganizaciones.keys().hasOnly([
+          'MUP', 'FCS', 'ARP', 'PDT', 'CPM'
+        ])
+        && data.votosOrganizaciones.MUP is int
+        && data.votosOrganizaciones.FCS is int
+        && data.votosOrganizaciones.ARP is int
+        && data.votosOrganizaciones.PDT is int
+        && data.votosOrganizaciones.CPM is int
+        && data.votosOrganizaciones.MUP >= 0
+        && data.votosOrganizaciones.FCS >= 0
+        && data.votosOrganizaciones.ARP >= 0
+        && data.votosOrganizaciones.PDT >= 0
+        && data.votosOrganizaciones.CPM >= 0
+        && data.votosNulos is int
+        && data.votosNulos >= 0
+        && data.votosBlancos is int
+        && data.votosBlancos >= 0
+        && data.totalSufragantes is int
+        && data.totalSufragantes == data.votosOrganizaciones.MUP
+          + data.votosOrganizaciones.FCS
+          + data.votosOrganizaciones.ARP
+          + data.votosOrganizaciones.PDT
+          + data.votosOrganizaciones.CPM
+          + data.votosNulos
+          + data.votosBlancos;
+    }
+
+    function validGps(data) {
+      return data.gps is map
+        && data.gps.keys().hasAll(['lat', 'lng'])
+        && data.gps.lat is number
+        && data.gps.lat >= -90
+        && data.gps.lat <= 90
+        && data.gps.lng is number
+        && data.gps.lng >= -180
+        && data.gps.lng <= 180;
+    }
+
+    function isValidActa(data, actaId) {
+      return data.keys().hasAll([
+          'id',
+          'jrvId',
+          'recintoId',
+          'dignidad',
+          'votosOrganizaciones',
+          'votosNulos',
+          'votosBlancos',
+          'totalSufragantes',
+          'fotoPath',
+          'gps',
+          'auditadaPorCoordinador'
+        ])
+        && data.keys().hasOnly([
+          'id',
+          'jrvId',
+          'recintoId',
+          'dignidad',
+          'votosOrganizaciones',
+          'votosNulos',
+          'votosBlancos',
+          'totalSufragantes',
+          'fotoPath',
+          'gps',
+          'auditadaPorCoordinador',
+          'bloqueada'
+        ])
+        && data.id == actaId
+        && data.jrvId is string
+        && data.recintoId is string
+        && exists(jrvPath(data.jrvId))
+        && get(jrvPath(data.jrvId)).data.recintoId == data.recintoId
+        && data.dignidad in ['ALCALDE', 'PREFECTO']
+        && validVoteTotals(data)
+        && (data.fotoPath == null
+          || (data.fotoPath is string
+            && data.fotoPath.split('/')[0] == request.auth.uid))
+        && validGps(data)
+        && data.auditadaPorCoordinador is bool
+        && (!data.keys().hasAny(['bloqueada']) || data.bloqueada is bool)
+        && (!data.keys().hasAny(['bloqueada']) || data.bloqueada == false);
+    }
+
+    function canCorrectActa(data, actaId) {
+      return isUnlockedActa(data)
+        && data.id == actaId
+        && request.resource.data.jrvId == data.jrvId
+        && request.resource.data.recintoId == data.recintoId
+        && request.resource.data.diff(data).affectedKeys().hasOnly([
+          'votosOrganizaciones',
+          'votosNulos',
+          'votosBlancos',
+          'totalSufragantes',
+          'gps'
+        ])
+        && validVoteTotals(request.resource.data)
+        && validGps(request.resource.data)
+        && isUnlockedActa(request.resource.data);
+    }
+
+    match /usuarios/{uid} {
+      allow get: if signedIn()
+        && (request.auth.uid == uid
+          || isProvincial()
+          || (isRecinto()
+            && resource.data.rol == 'VEEDOR'
+            && resource.data.recintoId == getUserData().recintoId));
+
+      allow list: if isProvincial()
+        || (isRecinto()
+          && resource.data.rol == 'VEEDOR'
+          && resource.data.recintoId == getUserData().recintoId);
+
+      allow create: if signedIn()
+        && request.resource.data.id == uid
+        && (isProvincial()
+          || (isRecinto()
+            && request.resource.data.rol == 'VEEDOR'
+            && request.resource.data.recintoId == getUserData().recintoId));
+
+      allow update, delete: if false;
+    }
+
+    match /recintos/{recintoId} {
+      allow get, list: if isProvincial()
+        || (isRecinto() && recintoId == getUserData().recintoId);
+      allow create, update, delete: if isProvincial();
+    }
+
+    match /jrvs/{jrvId} {
+      allow get, list: if isProvincial()
+        || (isRecinto()
+          && resource.data.recintoId == getUserData().recintoId)
+        || isAssignedVeedor(jrvId);
+
+      allow create, delete: if isProvincial();
+
+      allow update: if isProvincial()
+        || (isRecinto()
+          && resource.data.recintoId == getUserData().recintoId
+          && request.resource.data.recintoId == resource.data.recintoId
+          && request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly(['veedorId'])
+          && (!request.resource.data.keys().hasAny(['veedorId'])
+            || request.resource.data.veedorId == null
+            || isVeedorOfRecinto(
+              request.resource.data.veedorId,
+              resource.data.recintoId
+            )));
+    }
+
+    match /organizaciones/{organizacionId} {
+      allow read, write: if isProvincial();
+    }
+
+    match /candidatos/{candidatoId} {
+      allow read, write: if isProvincial();
+    }
+
+    match /actas/{actaId} {
+      allow get, list: if isProvincial()
+        || canReadActaInRecinto(resource.data)
+        || canReadActaAsVeedor(resource.data);
+
+      allow create: if isProvincial()
+        || (isVeedor()
+          && isValidActa(request.resource.data, actaId)
+          && isUnlockedActa(request.resource.data)
+          && isAssignedVeedor(request.resource.data.jrvId));
+
+      allow update: if isProvincial()
+        || (isRecinto()
+          && canReadActaInRecinto(resource.data)
+          && canCorrectActa(resource.data, actaId))
+        || (isVeedor()
+          && isAssignedVeedor(resource.data.jrvId)
+          && canCorrectActa(resource.data, actaId));
+
+      allow delete: if isProvincial();
+    }
+
+    match /cedulas_lookup/{cedula} {
+      allow get: if resource.data.keys().hasOnly(['email'])
+        && resource.data.email is string;
+      allow list, create, update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
