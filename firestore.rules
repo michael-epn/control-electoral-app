@@ -3,7 +3,8 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() {
-      return request.auth != null;
+      return request.auth != null
+        && request.auth.token.email_verified == true;
     }
 
     function getUserData() {
@@ -33,15 +34,36 @@ service cloud.firestore {
     }
 
     function isVeedorOfRecinto(uid, recintoId) {
-      return exists(usuarioPath(uid))
-        && get(usuarioPath(uid)).data.rol == 'VEEDOR'
-        && get(usuarioPath(uid)).data.recintoId == recintoId;
+      return existsAfter(usuarioPath(uid))
+        && getAfter(usuarioPath(uid)).data.rol == 'VEEDOR'
+        && getAfter(usuarioPath(uid)).data.recintoId == recintoId;
     }
 
     function isAssignedVeedor(jrvId) {
       return isVeedor()
         && exists(jrvPath(jrvId))
         && get(jrvPath(jrvId)).data.veedorId == request.auth.uid;
+    }
+
+    function canCreateCedulaLookup(cedula) {
+      return request.resource.data.keys().hasAll(['email', 'uid'])
+        && request.resource.data.keys().hasOnly(['email', 'uid'])
+        && request.resource.data.email is string
+        && request.resource.data.uid is string
+        && existsAfter(usuarioPath(request.resource.data.uid))
+        && getAfter(usuarioPath(request.resource.data.uid)).data.id
+          == request.resource.data.uid
+        && getAfter(usuarioPath(request.resource.data.uid)).data.cedula == cedula
+        && getAfter(usuarioPath(request.resource.data.uid)).data.email
+          == request.resource.data.email
+        && getAfter(usuarioPath(request.resource.data.uid)).data.debeCambiarClave
+          == true
+        && ((isProvincial()
+            && getAfter(usuarioPath(request.resource.data.uid)).data.rol == 'RECINTO')
+          || (isRecinto()
+            && getAfter(usuarioPath(request.resource.data.uid)).data.rol == 'VEEDOR'
+            && getAfter(usuarioPath(request.resource.data.uid)).data.recintoId
+              == getUserData().recintoId));
     }
 
     function canReadActaInRecinto(data) {
@@ -182,12 +204,20 @@ service cloud.firestore {
 
       allow create: if signedIn()
         && request.resource.data.id == uid
-        && (isProvincial()
+        && ((isProvincial() && request.resource.data.rol == 'RECINTO')
           || (isRecinto()
             && request.resource.data.rol == 'VEEDOR'
             && request.resource.data.recintoId == getUserData().recintoId));
 
-      allow update, delete: if false;
+      allow update: if signedIn()
+        && request.auth.uid == uid
+        && resource.data.debeCambiarClave is bool
+        && request.resource.data.debeCambiarClave is bool
+        && resource.data.debeCambiarClave
+          != request.resource.data.debeCambiarClave
+        && request.resource.data.diff(resource.data)
+          .affectedKeys().hasOnly(['debeCambiarClave']);
+      allow delete: if false;
     }
 
     match /recintos/{recintoId} {
@@ -249,9 +279,15 @@ service cloud.firestore {
     }
 
     match /cedulas_lookup/{cedula} {
-      allow get: if resource.data.keys().hasOnly(['email'])
-        && resource.data.email is string;
-      allow list, create, update, delete: if false;
+      allow get: if !exists(
+          /databases/$(database)/documents/cedulas_lookup/$(cedula)
+        )
+        || (resource.data.keys().hasAll(['email', 'uid'])
+          && resource.data.keys().hasOnly(['email', 'uid'])
+          && resource.data.email is string
+          && resource.data.uid is string);
+      allow create: if signedIn() && canCreateCedulaLookup(cedula);
+      allow list, update, delete: if false;
     }
 
     match /{document=**} {
