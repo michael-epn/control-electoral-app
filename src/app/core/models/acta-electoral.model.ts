@@ -1,7 +1,11 @@
 import type { CoordenadasGps } from './coordenadas-gps.model';
 import type { Dignidad } from './dignidad.model';
 
-export type VotosOrganizaciones = Readonly<Record<string, number>>;
+declare const votosOrganizacionesBrand: unique symbol;
+
+export type VotosOrganizaciones = Readonly<Record<string, number>> & {
+  readonly [votosOrganizacionesBrand]: true;
+};
 
 export interface ActaElectoral {
   readonly id: string;
