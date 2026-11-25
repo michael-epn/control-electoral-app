@@ -203,33 +203,39 @@ function parseUsuario(value: unknown): Usuario {
   if (rol !== 'PROVINCIAL' && rol !== 'RECINTO' && rol !== 'VEEDOR') {
     throw new Error('Se encontró un perfil con rol inválido.');
   }
-  if (!Array.isArray(value['jrvIds']) || !value['jrvIds'].every(
-    (jrvId: unknown) => typeof jrvId === 'string',
-  )) {
+
+  const jrvIdsRaw = value['jrvIds'];
+  if (
+    jrvIdsRaw !== undefined
+    && (!Array.isArray(jrvIdsRaw) || !jrvIdsRaw.every((jrvId: unknown) => typeof jrvId === 'string'))
+  ) {
     throw new Error('Se encontró una asignación de usuario inválida.');
   }
 
-  const telefono = value['telefono'];
-  const recintoId = value['recintoId'];
+  const telefono = value['telefono'] ?? null;
+  const recintoId = value['recintoId'] ?? null;
+  const resolvedId = typeof value['id'] === 'string'
+    ? value['id']
+    : requireString(value, 'uid');
+
   if (
     (telefono !== null && typeof telefono !== 'string')
     || (recintoId !== null && typeof recintoId !== 'string')
-    || typeof value['debeCambiarClave'] !== 'boolean'
   ) {
     throw new Error('Se encontró un perfil con datos inválidos.');
   }
 
   return {
-    id: requireString(value, 'id'),
+    id: resolvedId,
     cedula: requireString(value, 'cedula'),
     nombres: requireString(value, 'nombres'),
     apellidos: requireString(value, 'apellidos'),
     telefono,
     email: requireString(value, 'email'),
     rol,
-    debeCambiarClave: value['debeCambiarClave'],
+    debeCambiarClave: Boolean(value['debeCambiarClave']),
     recintoId,
-    jrvIds: value['jrvIds'],
+    jrvIds: jrvIdsRaw ?? [],
   };
 }
 
@@ -545,6 +551,17 @@ export class EscrutinioStateService {
       return;
     }
 
+    this.escucharColeccion(
+      collection(this.firestore, 'organizaciones'),
+      this.organizacionesState,
+      parseOrganizacion,
+    );
+    this.escucharColeccion(
+      collection(this.firestore, 'candidatos'),
+      this.candidatosState,
+      parseCandidato,
+    );
+
     switch (usuario.rol) {
       case 'PROVINCIAL':
         this.escucharColeccion(
@@ -563,19 +580,9 @@ export class EscrutinioStateService {
           parseActa,
         );
         this.escucharColeccion(
-          query(collection(this.firestore, 'usuarios'), where('rol', '==', 'RECINTO')),
+          collection(this.firestore, 'usuarios'),
           this.usuariosState,
           parseUsuario,
-        );
-        this.escucharColeccion(
-          collection(this.firestore, 'organizaciones'),
-          this.organizacionesState,
-          parseOrganizacion,
-        );
-        this.escucharColeccion(
-          collection(this.firestore, 'candidatos'),
-          this.candidatosState,
-          parseCandidato,
         );
         break;
       case 'RECINTO':
