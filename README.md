@@ -46,6 +46,7 @@ Aplicación móvil de control y escrutinio electoral desarrollada con **Ionic An
 - Captura nativa de fotografía y validación de nitidez.
 - Obtención de coordenadas GPS con precisión alta y respaldo balanceado.
 - Evidencia almacenada en Supabase Storage mediante URLs firmadas.
+- Renovación de URLs de evidencia mediante una Cloud Function que valida la identidad y pertenencia del acta.
 - Consolidado provincial y métricas de avance.
 - Auditoría y corrección de actas por el Coordinador de Recinto.
 - Colas locales y sincronización diferida cuando vuelve la conexión.
@@ -82,7 +83,7 @@ src/app/
 │   ├── services/     # Firebase, Firestore, estado y servicios nativos
 │   └── validators/   # Cédula ecuatoriana y cuadre de actas
 ├── shared/
-│   └── components/   # Header, feedback, editor de actas
+│   └── components/  # Header, feedback, editor y enlaces de evidencias
 └── features/
     ├── auth/         # Login, recuperación y cambio de contraseña
     ├── provincial/   # Consolidado, recintos y altas de coordinadores
@@ -148,6 +149,7 @@ Esto permite indicadores explícitos de carga, éxito y error sin estados implí
 ### Servicios externos
 
 - Proyecto de Firebase con Authentication y Cloud Firestore.
+- Cloud Functions habilitadas para firmar enlaces de evidencia entre roles (puede requerir plan Blaze).
 - Proyecto de Supabase con bucket privado `actas-evidencias`.
 - Firebase configurado como proveedor Third-Party Auth en Supabase para validar tokens.
 
@@ -264,7 +266,24 @@ Las evidencias deben conservar esta estructura:
 <UID-FIREBASE>/<RECINTO>/<JRV-DIGNIDAD>_<timestamp>_<secuencia>.jpg
 ```
 
-El servicio valida que el primer segmento coincida con el UID autenticado y genera URLs firmadas con vigencia limitada.
+El servicio fuerza el primer segmento al UID autenticado, sube sin sobrescribir y genera una URL inicial firmada de siete días. La política RLS mantiene lectura, inserción y actualización restringidas al UID propietario.
+
+Las URLs que necesitan coordinadores de otros UID se renuevan a través de la Cloud Function `obtenerUrlFotoActa`. Esta busca la ruta en el acta de Firestore, verifica el perfil del usuario y autoriza a Provincial para cualquier acta, a Recinto únicamente para su recinto y a Veedor únicamente para su propia evidencia y una JRV asignada. La función usa la clave `service_role` solo en servidor y no modifica las políticas RLS.
+
+### Desplegar la función de URLs firmadas
+
+Las funciones requieren habilitar Cloud Functions para el proyecto Firebase; Firebase puede exigir el plan Blaze y una cuenta de facturación.
+
+```bash
+npm install --prefix functions
+firebase login
+firebase use TU-PROYECTO
+firebase functions:secrets:set SUPABASE_URL
+firebase functions:secrets:set SUPABASE_SERVICE_ROLE_KEY
+firebase deploy --only functions:obtenerUrlFotoActa
+```
+
+Ingrese los valores solicitados de Supabase en el prompt del CLI. La clave `service_role` nunca debe añadirse a `src/environments/`, al APK ni al control de versiones. El despliegue compila automáticamente la función.
 
 No use buckets públicos para las fotos de actas.
 
@@ -520,10 +539,11 @@ La desinstalación o eliminación de datos de la app puede borrar la cola local.
 ### Supabase
 
 - Bucket privado.
-- Autorización mediante token Firebase.
+- Subidas autenticadas mediante token Firebase y limitadas al UID propietario por RLS.
 - El primer segmento de la ruta debe coincidir con el claim `sub`.
 - La selección, inserción y actualización se restringen al propietario.
 - La eliminación pública está restringida.
+- La función `obtenerUrlFotoActa` verifica el rol y la pertenencia al acta antes de usar la clave `service_role` para emitir una URL temporal; no concede acceso global a Storage.
 
 ### Cliente
 

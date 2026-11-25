@@ -9,6 +9,7 @@ import type { RequestState } from '../../../core/models/request-state.model';
 import { EscrutinioStateService } from '../../../core/services/escrutinio-state.service';
 import { MediaLocationError, MediaLocationService } from '../../../core/services/media-location.service';
 import { actaCuadreValidator } from '../../../core/validators/acta-cuadre.validator';
+import { ActaPhotoComponent } from '../acta-photo/acta-photo.component';
 import { UiFeedbackComponent } from '../ui-feedback/ui-feedback.component';
 
 function enteroNoNegativo(value: unknown): boolean {
@@ -35,6 +36,7 @@ function crearControlVotos(): FormControl<number> {
     IonItem,
     IonLabel,
     IonToast,
+    ActaPhotoComponent,
     UiFeedbackComponent,
   ],
   template: `
@@ -96,13 +98,11 @@ function crearControlVotos(): FormControl<number> {
             Capturar Foto del Acta
           </ion-button>
           <app-ui-feedback [requestState]="fotoState()" />
-          @if (auditoria() && acta()?.fotoUrl && fotoState().status !== 'success') {
-            <p>
-              Se conservará la evidencia existente:
-              <a [href]="acta()?.fotoUrl" target="_blank" rel="noopener noreferrer">
-                ver fotografía
-              </a>
-            </p>
+          @if (auditoria() && acta(); as actual) {
+            @if (actual.fotoUrl && fotoState().status !== 'success') {
+              <p>Se conservará la evidencia existente:</p>
+              <app-acta-photo [fotoPath]="actual.fotoPath" [fotoUrl]="actual.fotoUrl" />
+            }
           }
           @if (fotoState().status === 'success') {
             <p>Foto nítida capturada y lista para enviar.</p>

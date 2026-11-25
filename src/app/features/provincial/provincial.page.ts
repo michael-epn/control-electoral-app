@@ -20,6 +20,7 @@ import type { Usuario } from '../../core/models/usuario.model';
 import { AuthStateService } from '../../core/services/auth-state.service';
 import { EscrutinioStateService } from '../../core/services/escrutinio-state.service';
 import { cedulaEcuatorianaValidator } from '../../core/validators/cedula-ecuatoriana.validator';
+import { ActaPhotoComponent } from '../../shared/components/acta-photo/acta-photo.component';
 import { AppHeaderComponent } from '../../shared/components/app-header/app-header.component';
 import { UiFeedbackComponent } from '../../shared/components/ui-feedback/ui-feedback.component';
 
@@ -46,6 +47,7 @@ function esEnteroPositivo(value: unknown): boolean {
     IonSelect,
     IonSelectOption,
     IonToast,
+    ActaPhotoComponent,
     AppHeaderComponent,
   ],
   template: `
@@ -233,6 +235,9 @@ function esEnteroPositivo(value: unknown): boolean {
                     Ver mapa
                   </a>
                 </ion-item>
+                @if (acta.fotoUrl) {
+                  <app-acta-photo [fotoPath]="acta.fotoPath" [fotoUrl]="acta.fotoUrl" />
+                }
               }
             </ion-card-content>
           </ion-card>

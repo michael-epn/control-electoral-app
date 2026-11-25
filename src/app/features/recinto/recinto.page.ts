@@ -21,6 +21,7 @@ import type { Usuario } from '../../core/models/usuario.model';
 import { AuthStateService } from '../../core/services/auth-state.service';
 import { EscrutinioStateService } from '../../core/services/escrutinio-state.service';
 import { ActaEditorComponent } from '../../shared/components/acta-editor/acta-editor.component';
+import { ActaPhotoComponent } from '../../shared/components/acta-photo/acta-photo.component';
 import { AppHeaderComponent } from '../../shared/components/app-header/app-header.component';
 import { UiFeedbackComponent } from '../../shared/components/ui-feedback/ui-feedback.component';
 import { cedulaEcuatorianaValidator } from '../../core/validators/cedula-ecuatoriana.validator';
@@ -30,6 +31,7 @@ import { cedulaEcuatorianaValidator } from '../../core/validators/cedula-ecuator
   standalone: true,
   imports: [
     ActaEditorComponent,
+    ActaPhotoComponent,
     ReactiveFormsModule,
     UiFeedbackComponent,
     IonButton,
@@ -165,7 +167,7 @@ import { cedulaEcuatorianaValidator } from '../../core/validators/cedula-ecuator
               <ion-card-content>
                 <p>{{ acta.auditadaPorCoordinador ? 'Auditada' : 'Pendiente de auditoría' }}</p>
                 @if (acta.fotoUrl) {
-                  <a [href]="acta.fotoUrl" target="_blank" rel="noopener noreferrer">Ver fotografía</a>
+                  <app-acta-photo [fotoPath]="acta.fotoPath" [fotoUrl]="acta.fotoUrl" />
                 }
                 <p>GPS: {{ acta.gps.lat }}, {{ acta.gps.lng }}</p>
                 @if (!acta.auditadaPorCoordinador && !acta.bloqueada) {

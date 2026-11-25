@@ -303,6 +303,10 @@ export class EscrutinioStateService {
     });
   }
 
+  obtenerUrlFotoActa(fotoPath: string): Promise<string> {
+    return this.supabase.obtenerUrlFotoActa(fotoPath);
+  }
+
   actaPara(jrvId: string, dignidad: Dignidad): ActaElectoral | undefined {
     return this.actas().find(
       (acta) => acta.jrvId === jrvId && acta.dignidad === dignidad,
