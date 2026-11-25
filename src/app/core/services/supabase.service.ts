@@ -3,7 +3,7 @@ import { Auth } from '@angular/fire/auth';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { environment } from '../../../environments/environment';
 
-const DURACION_URL_FIRMADA_SEGUNDOS = 60 * 60 * 24 * 7;
+const DURACION_URL_FIRMADA_SEGUNDOS = 60 * 60 * 24 * 7; // 7 días
 
 @Injectable({
   providedIn: 'root',
@@ -14,21 +14,24 @@ export class SupabaseService {
     environment.supabase.url,
     environment.supabase.key,
     {
-      accessToken: async () => {
-        const usuario = this.auth.currentUser;
-        return usuario ? usuario.getIdToken() : null;
-      },
+      accessToken: async () => this.obtenerTokenFirebase(),
     },
   );
 
   async subirFotoActa(file: Blob, ruta: string): Promise<string> {
+    await this.auth.authStateReady();
     this.validarRutaEscritura(ruta);
+
+    const token = await this.obtenerTokenFirebase();
+    if (!token) {
+      throw new Error('No se pudo obtener el token de autenticación de Firebase.');
+    }
 
     const { error } = await this.client.storage
       .from('actas-evidencias')
       .upload(ruta, file, {
         contentType: file.type || 'image/jpeg',
-        upsert: true,
+        upsert: false,
       });
 
     if (error) {
@@ -46,6 +49,7 @@ export class SupabaseService {
     ruta: string,
     expiresInSeconds = DURACION_URL_FIRMADA_SEGUNDOS,
   ): Promise<string> {
+    await this.auth.authStateReady();
     this.validarRutaLectura(ruta);
 
     const { data, error } = await this.client.storage
@@ -61,6 +65,15 @@ export class SupabaseService {
     }
 
     return data.signedUrl;
+  }
+
+  private async obtenerTokenFirebase(): Promise<string | null> {
+    await this.auth.authStateReady();
+    const usuario = this.auth.currentUser;
+    if (!usuario) {
+      return null;
+    }
+    return usuario.getIdToken();
   }
 
   private validarRutaEscritura(ruta: string): void {
